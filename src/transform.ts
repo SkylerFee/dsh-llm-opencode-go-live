@@ -81,6 +81,7 @@ export function transformProvider(provider: SourceProvider): TransformResult {
       baseUrl: policy.baseUrl,
       reasoning: model.reasoning ?? policy.reasoning ?? false,
       ...(policy.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: policy.thinkingLevelMap }),
+      ...(policy.compat === undefined ? {} : { compat: policy.compat }),
       input,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow,

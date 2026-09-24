@@ -1,6 +1,6 @@
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import type { PiAiAdapterOptions, ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai'
-import type { Api, CredentialStore, Model, Provider } from '@earendil-works/pi-ai'
+import type { Api, CredentialStore, Model, Provider, StreamOptions } from '@earendil-works/pi-ai'
 import { opencodeGoProvider } from '@earendil-works/pi-ai/providers/opencode-go'
 import type { CatalogSnapshot } from './store.js'
 
@@ -11,6 +11,16 @@ type SupportedModel = Model<'openai-responses' | 'openai-completions' | 'anthrop
 
 /** 直接注册到 Harness `ctx.llm` 的适配器所需的密钥解析器。 */
 export type ApiKeyResolver = () => Promise<string>
+
+/**
+ * 将 Harness 会话标识传给 OpenCode Go 的所有请求协议。
+ * @param options - pi-ai 请求参数。
+ * @returns 保留原参数并附加会话请求头的参数。
+ */
+function withSessionHeader<T extends StreamOptions>(options: T | undefined): T | undefined {
+  if (options?.sessionId === undefined) return options
+  return { ...options, headers: { ...options.headers, 'x-opencode-session': options.sessionId } }
+}
 
 /**
  * 复用 pi-ai 内置 OpenCode Go 的请求实现，只替换路由身份和动态模型快照。
@@ -31,8 +41,8 @@ export function createDynamicProvider(models: readonly Model<Api>[]): Provider {
     ...(base.headers === undefined ? {} : { headers: base.headers }),
     auth: base.auth,
     getModels: () => models,
-    stream: (model, context, options) => base.stream(requestModel(model), context, options as never),
-    streamSimple: (model, context, options) => base.streamSimple(requestModel(model), context, options as never),
+    stream: (model, context, options) => base.stream(requestModel(model), context, withSessionHeader(options) as never),
+    streamSimple: (model, context, options) => base.streamSimple(requestModel(model), context, withSessionHeader(options)),
   }
 }
 

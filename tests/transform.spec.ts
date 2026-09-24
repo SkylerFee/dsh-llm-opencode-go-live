@@ -58,28 +58,84 @@ test('动态 Provider 复用 pi-ai 的请求实现', () => {
   assert.equal(typeof provider.streamSimple, 'function')
 })
 
+test('三种协议请求都携带稳定的 OpenCode 会话标识', async () => {
+  const models = transformProvider({ models: {
+    'deepseek-v4-flash': { tool_call: true, limit: { context: 100, output: 10 } },
+    'gpt-5.6-luna': { tool_call: true, limit: { context: 100, output: 10 } },
+    'minimax-m3': { tool_call: true, limit: { context: 100, output: 10 } },
+  } }).models
+  const provider = createDynamicProvider(models)
+  for (const model of models) {
+    let session: string | null = null
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      session = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+        .get('x-opencode-session')
+      return new Response('{"error":{"message":"fixture refusal"}}', {
+        status: 400, headers: { 'content-type': 'application/json' },
+      })
+    }
+    try {
+      for await (const _event of provider.streamSimple(model, {
+        messages: [{ role: 'user', content: 'hello', timestamp: 0 }],
+      }, { apiKey: 'test-key', sessionId: 'session-123', maxRetries: 0, fetch })) { /* 响应仅用于检查请求头。 */ }
+    } catch (error) {
+      assert.ok(error instanceof Error)
+    }
+    assert.equal(session, 'session-123', model.api)
+  }
+})
+
 test('成功刷新后动态目录可以新增和移除模型', async () => {
   let source: SourceProvider = {
     models: { 'old-model': { tool_call: true, limit: { context: 100, output: 10 } } },
   }
+  let updates = 0
   const runtime = new OpenCodeGoLiveRuntime({
     config: resolveConfig({ apiKeyEnv: 'OPENCODE_API_KEY', catalog: { refreshOnStart: false, refreshIntervalMs: 0 } }),
     source: { fetchProvider: async () => source },
     store: new MemoryCatalogStore(),
     logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+    onCatalogUpdated: () => { updates += 1 },
   })
   const adapter = createDynamicAdapter(() => runtime.getSnapshot(), async () => 'test-key')
 
   await runtime.refresh()
   assert.deepEqual((await adapter.listModels(ROUTE_ID)).map(model => model.id), ['old-model'])
+  assert.equal(updates, 1)
   source = { models: { 'new-model': { tool_call: true, limit: { context: 100, output: 10 } } } }
   await runtime.refresh()
   assert.deepEqual((await adapter.listModels(ROUTE_ID)).map(model => model.id), ['new-model'])
+  assert.equal(updates, 2)
   source = {}
   await runtime.refresh()
   assert.deepEqual((await adapter.listModels(ROUTE_ID)).map(model => model.id), ['new-model'])
+  assert.equal(updates, 2)
   source = { models: {} }
   await runtime.refresh()
   assert.deepEqual((await adapter.listModels(ROUTE_ID)).map(model => model.id), [])
-  runtime.dispose()
+  assert.equal(updates, 3)
+  await runtime.dispose()
+})
+
+test('卸载中止进行中的刷新且不发布卸载后的目录', async () => {
+  let release: ((provider: SourceProvider) => void) | undefined
+  let signal: AbortSignal | undefined
+  const runtime = new OpenCodeGoLiveRuntime({
+    config: resolveConfig({ apiKeyEnv: 'OPENCODE_API_KEY', catalog: { refreshOnStart: false, refreshIntervalMs: 0 } }),
+    source: { fetchProvider: async received => {
+      signal = received
+      return new Promise<SourceProvider>(resolve => { release = resolve })
+    } },
+    store: new MemoryCatalogStore(),
+    logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+  })
+  const refresh = runtime.refresh()
+  const disposing = runtime.dispose()
+  assert.equal(signal?.aborted, true)
+  assert.ok(release)
+  release({ models: { late: { tool_call: true, limit: { context: 100, output: 10 } } } })
+  await disposing
+  assert.equal(await refresh, undefined)
+  assert.equal(runtime.getSnapshot(), undefined)
+  assert.equal(await runtime.refresh(), undefined)
 })

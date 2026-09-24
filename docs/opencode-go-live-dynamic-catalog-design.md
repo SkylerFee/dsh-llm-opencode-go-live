@@ -1,6 +1,6 @@
 # OpenCode Go 动态模型目录插件：需求与实施设计
 
-状态：方案设计与插件初始化实现；持久化接入和真实 API 验证待完成。
+状态：插件支持 bundle 安装与 JSON 快照恢复；Harness 存储服务接入和真实 API 验证待完成。
 
 ## 概述
 
@@ -107,12 +107,13 @@ OpenCode Go API
 
 ## 配置设计
 
-以下是插件实现后的目标配置，不是当前可直接使用的字段。
+以下字段由当前插件配置解析器支持；`cachePath` 使用本地 JSON 文件，尚未接入 Harness 存储服务。
 
 ```yaml
 llm-opencode-go-live:
   apiKeyEnv: OPENCODE_GO_API_KEY
   catalog:
+    cachePath: /absolute/path/to/opencode-go-live-catalog.json
     refreshOnStart: true
     refreshIntervalMs: 21600000
     refreshTimeoutMs: 10000
@@ -124,12 +125,15 @@ agent-default-model:
 
 | 字段 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `apiKeyEnv` | 是 | 无 | Harness 凭据引用；不得写入实际 API Key |
+| `apiKeyEnv` | 否 | `OPENCODE_GO_API_KEY` | Harness 凭据引用；不得写入实际 API Key |
+| `catalog.cachePath` | 否 | 无 | 绝对路径；配置后使用 JSON 快照跨重启恢复目录，未配置时使用内存缓存 |
 | `catalog.refreshOnStart` | 否 | `true` | 插件加载后尝试网络刷新；始终先恢复本地快照 |
 | `catalog.refreshIntervalMs` | 否 | `21,600,000` | 连续刷新间隔；设为 `0` 时只在启动和显式刷新时更新 |
 | `catalog.refreshTimeoutMs` | 否 | `10,000` | 单次目录访问的超时上限 |
 
-配置 schema 必须限制时间字段为非负安全整数，并在写入时拒绝无效值。`settings.yaml` 的热更新应更新下一个请求可见的目录策略；正在执行的请求继续持有开始时捕获的模型配置。
+配置 schema 限制时间字段为非负安全整数，并在写入时拒绝无效值。供应商页面通过 `settings` 描述中的 `apiKeyEnv` 凭据引用写入 API Key；凭据引用更新后，下一个模型请求读取新引用。目录策略仍在插件配置中管理。
+
+每次模型请求将 Harness 的会话 ID 写入 `x-opencode-session`，同一对话的后续请求复用该 ID；缺少此请求头时，OpenCode Go 会拒绝请求。
 
 ## 模型数据转换
 
@@ -162,7 +166,7 @@ OpenCode 特有的会话头、端点路径、推理序列化和历史回放字�
 
 ### 生命周期
 
-1. 插件加载时创建空基础目录的动态 Provider，并从 `CatalogStore` 恢复最近成功快照。
+1. 插件加载时创建空基础目录的动态 Provider，并从已配置的 `cachePath` 恢复最近成功快照；未配置时使用内存缓存。
 2. 若 `refreshOnStart` 为真，插件在原生适配器已注册后发起一次允许网络的刷新；失败时按短间隔有限重试，避免启动时网络尚未就绪导致长时间空目录。
 3. 定时器仅在 `refreshIntervalMs` 大于零时运行；同一时刻最多存在一个刷新请求。
 4. 刷新先获取来源数据，再完成字段校验和转换；存在有效模型时发布其完整转换结果，来源有效但模型为空时发布空目录以移除全部模型。来源无效或所有条目无效时保留旧快照。

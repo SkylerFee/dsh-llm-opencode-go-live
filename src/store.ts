@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Api, Model } from '@earendil-works/pi-ai'
+import { policyFor } from './policy.js'
 import type { CatalogDiagnostic } from './transform.js'
 
 /** 可恢复的目录快照；不包含凭据、请求或响应内容。 */
@@ -42,7 +43,28 @@ export class JsonCatalogStore implements CatalogStore {
     try {
       const value: unknown = JSON.parse(await readFile(this.path, 'utf8'))
       if (!isSnapshot(value)) return undefined
-      return value
+      return {
+        version: 1,
+        checkedAt: value.checkedAt,
+        diagnostics: value.diagnostics,
+        models: value.models.map(model => {
+          const policy = policyFor(model.id)
+          return {
+            id: model.id,
+            name: model.name,
+            api: policy.api,
+            provider: 'opencode-go-live',
+            baseUrl: policy.baseUrl,
+            reasoning: model.reasoning,
+            ...(policy.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: policy.thinkingLevelMap }),
+            ...(policy.compat === undefined ? {} : { compat: policy.compat }),
+            input: model.input,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+          }
+        }),
+      }
     } catch {
       return undefined
     }
@@ -71,12 +93,16 @@ function isModel(value: unknown): value is Model<Api> {
   if (typeof value !== 'object' || value === null) return false
   const model = value as Partial<Model<Api>>
   return typeof model.id === 'string'
+    && model.id.length > 0
     && typeof model.name === 'string'
-    && typeof model.api === 'string'
-    && typeof model.provider === 'string'
-    && typeof model.baseUrl === 'string'
+    && model.provider === 'opencode-go-live'
+    && model.api === policyFor(model.id).api
+    && model.baseUrl === policyFor(model.id).baseUrl
+    && typeof model.reasoning === 'boolean'
     && Array.isArray(model.input)
     && model.input.length > 0
+    && model.input.every(input => input === 'text' || input === 'image')
+    && model.input.includes('text')
     && typeof model.contextWindow === 'number'
     && Number.isSafeInteger(model.contextWindow)
     && model.contextWindow > 0
