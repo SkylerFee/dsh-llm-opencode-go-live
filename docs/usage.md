@@ -19,9 +19,9 @@ pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 
 ## 配置密钥并使用模型
 
-1. 启动 Web profile，打开 **Settings → Models**，找到 **OpenCode Go (Live)** 供应商。
-2. 展开供应商的编辑卡片，在 **API Key** 输入框填写 OpenCode Go 密钥并应用。密钥写入 DSH 凭据服务，页面不会回显已保存的值；绿色状态表示已确认该引用有凭据。
-3. 等待动态目录加载，在供应商行或模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
+1. 启动 Web profile，打开 **Settings → Models**，找到由插件提供的 **OpenCode Go (Live)** 卡片。
+2. 在卡片的 **API Key** 输入框填写 OpenCode Go 密钥并应用。密钥写入 DSH 凭据服务，页面不会回显已保存的值；绿色状态表示已确认该引用有凭据。
+3. 等待动态目录加载，展开卡片的模型列表，或在模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
 
 模型目录来自 Models.dev，获取目录不需要 API Key；真正请求 OpenCode Go API 时才会解析密钥。选择模型后若仍无法调用，请按下方[排查](#排查)先区分凭据错误与上游响应。
 
@@ -47,7 +47,7 @@ llm-opencode-go-live:
 | `catalog.refreshIntervalMs` | `21600000` | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。 |
 | `catalog.refreshTimeoutMs` | `10000` | 单次目录请求超时，单位毫秒；`0` 禁用超时。 |
 
-目录字段由插件配置管理，Models 页面仅编辑 API Key。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
+目录字段由插件配置管理，插件的 Models 卡片仅编辑 API Key。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
 
 ## 排查
 
@@ -55,7 +55,7 @@ llm-opencode-go-live:
 | --- | --- |
 | 看不到 OpenCode Go (Live) 供应商 | 检查插件是否安装在当前 `web` profile，重启该 profile，并查看启动日志中的插件加载错误。 |
 | 供应商可见但没有 live 模型 | 检查 DSH 进程能否访问 Models.dev；首次加载没有快照时会保持空目录，启动刷新失败会写入警告。 |
-| 返回 `MISSING_CREDENTIAL` | 在该供应商的 Models 编辑卡片保存 API Key；确认运行中的 DSH 使用同一 profile 和凭据引用。 |
+| 返回 `MISSING_CREDENTIAL` | 在插件的 Models 卡片保存 API Key；确认运行中的 DSH 使用同一 profile 和凭据引用。 |
 | 模型可选但 API 调用失败 | 目录加载与模型调用相互独立。查看 DSH 的调用错误和服务日志，按错误码区分认证、权限、限流和网络问题；不要在日志或工单中粘贴密钥。 |
 | 刷新后仍显示旧模型 | 查看刷新警告；来源失败、全无效或快照保存失败时，插件保留上次成功目录。 |
 

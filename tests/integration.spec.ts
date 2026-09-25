@@ -29,9 +29,7 @@ test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () =
       catalog: { cachePath, refreshOnStart: false, refreshIntervalMs: 0 },
     })
     assert.deepEqual(ctx.llm.listProviders(), [{ id: Live.ROUTE_ID, name: Live.DISPLAY_NAME }])
-    assert.deepEqual(ctx.llm.listConfigurableProviders(), [{
-      provider: Live.ROUTE_ID, displayName: Live.DISPLAY_NAME, settingsNs: Live.name, settingsPath: [],
-    }])
+    assert.deepEqual(ctx.llm.listConfigurableProviders(), [])
     assert.throws(
       () => ctx.llm.registerAdapter([Live.ROUTE_ID], {} as never),
       (error: unknown) => error instanceof LlmError && error.code === 'DUPLICATE_ADAPTER',
@@ -43,7 +41,7 @@ test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () =
       listed = await ctx.llm.listModels(Live.ROUTE_ID)
     }
     assert.deepEqual(listed.map(model => model.id), ['deepseek-v4-flash'])
-    assert.equal(catalogEvents, 3)
+    assert.equal(catalogEvents, 2)
     const prepared = await ctx.llm.prepareCall({ provider: Live.ROUTE_ID, model: 'deepseek-v4-flash' })
     const chunks = []
     for await (const chunk of prepared.stream({ ...prepared.config, messages: [] })) chunks.push(chunk)

@@ -2,7 +2,7 @@
 
 [English](README.en.md) | 中文
 
-DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev 更新 `opencode-go` 模型列表，注册独立的 `opencode-go-live` 路由，复用 pi-ai 处理模型请求；内置 `opencode-go` 路由不受影响。
+DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev 更新 `opencode-go` 模型列表，注册独立的 `opencode-go-live` 路由，并由插件自己的浏览器入口在 Models 页显示供应商、密钥和动态模型；复用 pi-ai 处理模型请求；内置 `opencode-go` 路由不受影响。
 
 ## 快速开始
 
@@ -12,7 +12,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-重启 Web profile 后，打开 **Settings → Models → OpenCode Go (Live)**，填写 API Key 并应用，再从模型选择器选择 `opencode-go-live` 下的模型。密钥由 DSH 凭据服务保存，默认引用名为 `OPENCODE_GO_API_KEY`；bundle 默认将模型目录快照保存在 Harness home 的 `cache/opencode-go-live.json`。安装不会切换默认模型。
+重启 Web profile 后，打开 **Settings → Models**，在插件提供的 **OpenCode Go (Live)** 卡片填写 API Key 并应用，再从模型选择器选择 `opencode-go-live` 下的模型。密钥由 DSH 凭据服务保存，默认引用名为 `OPENCODE_GO_API_KEY`；bundle 默认将模型目录快照保存在 Harness home 的 `cache/opencode-go-live.json`。安装不会切换默认模型。
 
 ## 文档
 

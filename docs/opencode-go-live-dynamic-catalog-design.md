@@ -13,13 +13,15 @@ flowchart LR
     D <--> E[store.ts JSON 或内存快照]
     D --> F[provider.ts 动态 PiAiAdapter]
     F --> G[DSH llm 注册表]
-    G --> H[Models 设置页与模型选择器]
+    G --> H[模型选择器]
+    L[插件 client.js] --> M[Models 页 footer 插槽]
+    M --> N[供应商卡片与动态模型列表]
     I[DSH 凭据服务] --> F
     F --> J[pi-ai OpenCode Go 传输]
     J --> K[OpenCode Go API]
 ```
 
-插件只注册 `opencode-go-live` 路由。DSH 内置的 `opencode-go` 路由及其静态模型目录由原有插件管理；切换到它需要用户显式选模型。`ctx.llm.registerConfigurableProviders()` 将新路由及设置命名空间发布给 Models 设置页，`ctx.llm.registerAdapter()` 提供实际模型与调用能力。路由在目录暖机前注册，因此目录不可用时供应商仍可出现。
+插件只注册 `opencode-go-live` 路由。DSH 内置的 `opencode-go` 路由及其静态模型目录由原有插件管理；切换到它需要用户显式选模型。`ctx.llm.registerAdapter()` 提供实际模型与调用能力；插件自己的 `client.js` 通过 DSH 已有的 `settings.models.footer` 插槽绘制供应商卡片，并从会话模型目录读取当前模型。插件卸载后客户端入口随之移除；未安装时主库的 Models 页保持原样。路由在目录暖机前注册，因此目录不可用时供应商仍可出现。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -29,7 +31,8 @@ flowchart LR
 | `src/transform.ts` | 校验来源模型，产出 pi-ai 模型和拒绝诊断。 |
 | `src/store.ts` | 读取和保存内存或 JSON 目录快照。 |
 | `src/provider.ts` | 复用 `PiAiAdapter` 和 pi-ai OpenCode Go 传输，将会话 ID 传给上游。 |
-| `src/index.ts` | 注册 Cordis 插件、供应商、刷新任务和凭据解析。 |
+| `src/index.ts` | 注册 Cordis 插件、模型路由、刷新任务和凭据解析。 |
+| `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供密钥编辑和模型列表。 |
 
 ## 目录生命周期
 
@@ -93,7 +96,7 @@ sequenceDiagram
     end
 ```
 
-`apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_API_KEY`；配置和目录缓存均不保存密钥值。Models 设置页通过 DSH 凭据服务写入密钥，适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
+`apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_API_KEY`；配置和目录缓存均不保存密钥值。插件卡片从 DSH 设置描述读取当前引用，再通过凭据服务写入密钥；适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
 
 ## 故障与边界
 
@@ -105,4 +108,4 @@ sequenceDiagram
 | 上游拒绝或限流 | pi-ai 返回相应调用错误；目录刷新与 API 请求是两条独立链路。 |
 | `opencode-go-live` 被其他适配器占用 | 注册失败；一个路由只能由一个适配器持有。 |
 
-插件依赖 DSH 的 `llm`、`credentials` 服务，设置页还需要 DSH 的 `settings` 服务。目录刷新使用公开的 Models.dev 来源，不验证密钥是否有 OpenCode Go API 调用权限；能列出模型不等于请求已经成功。
+插件依赖 DSH 的 `llm`、`credentials` 服务，插件卡片还需要 DSH 的 `settings` 服务及 Models 页的 `settings.models.footer` 插槽。目录刷新使用公开的 Models.dev 来源，不验证密钥是否有 OpenCode Go API 调用权限；能列出模型不等于请求已经成功。

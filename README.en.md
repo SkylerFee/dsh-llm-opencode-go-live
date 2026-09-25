@@ -2,7 +2,7 @@
 
 English | [中文](README.md)
 
-An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, and uses pi-ai for model requests. The built-in `opencode-go` route remains available.
+An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, contributes its own Models settings card, and uses pi-ai for model requests. The built-in `opencode-go` route remains available.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ Run `pnpm install && pnpm run check` in this plugin checkout, then install its b
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-Restart the Web profile. Open **Settings → Models → OpenCode Go (Live)**, enter your API key, and apply it. Choose a model under `opencode-go-live` in the model picker. DSH stores the key through its credentials service under the default reference `OPENCODE_GO_API_KEY`. The bundle stores a catalog snapshot at `cache/opencode-go-live.json` under the Harness home. Installation does not change the default model.
+Restart the Web profile. Open **Settings → Models**, enter your API key in the plugin-owned **OpenCode Go (Live)** card, and apply it. Choose a model under `opencode-go-live` in the model picker. DSH stores the key through its credentials service under the default reference `OPENCODE_GO_API_KEY`. The bundle stores a catalog snapshot at `cache/opencode-go-live.json` under the Harness home. Installation does not change the default model.
 
 ## Documentation
 

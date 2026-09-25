@@ -12,17 +12,27 @@
       "default": "./lib/index.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": "./client.js"
   },
   "files": [
     "lib/**/*.js",
     "lib/**/*.d.ts",
     "cordis.patch.yml",
-    "docs/*.md"
+    "docs/*.md",
+    "client.js"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings-models"
+      ]
     }
   },
   "scripts": {

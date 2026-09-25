@@ -184,9 +184,6 @@ export function apply(
       },
     ),
   )
-  ctx.llm.registerConfigurableProviders([
-    { provider: ROUTE_ID, displayName: 'OpenCode Go (Live)', settingsNs: name, settingsPath: [] },
-  ])
   void runtime.start().catch(error => {
     ctx.logger.error(`llm-opencode-go-live: startup failed (${String(error)})`)
   })
