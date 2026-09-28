@@ -2,7 +2,7 @@
 
 ## 任务入口
 
-涉及模型来源、协议策略、缓存、刷新、路由或验收行为时，先阅读 [动态目录设计](docs/opencode-go-live-dynamic-catalog-design.md)，并把它作为当前行为真源。设计文档与实现不一致时，先确认是设计变更还是实现缺陷，再修改对应一处。
+涉及模型来源、协议策略、缓存、刷新、路由或验收行为时，先阅读 [动态目录设计](docs/opencode-go-live-dynamic-catalog-design.md)（[中文版](docs/opencode-go-live-dynamic-catalog-design.zh.md)），并把它作为当前行为真源。设计文档与实现不一致时，先确认是设计变更还是实现缺陷，再修改对应一处。
 
 ## 项目边界
 
@@ -17,7 +17,7 @@
 1. 先检查 `git status --short`，保留已有未提交改动；只修改本插件需要的文件。
 2. 按 `src/config.ts`、`source.ts`、`policy.ts`、`transform.ts`、`store.ts`、`provider.ts` 的职责放置代码。跨模块抽象只有在已有调用者需要时才增加。
 3. 非平凡转换、缓存或并发逻辑必须添加一个能失败的最小测试；来源网络使用固定替身，不在单元测试访问真实服务。
-4. 修改配置、路由、缓存或模型字段后，更新 `README.md` 或设计文档中受影响的事实，保持中文说明和函数 JSDoc。
+4. 修改配置、路由、缓存或模型字段后，更新 `README.md` 或设计文档中受影响的事实，保持中文说明和函数 JSDoc。英文是主语言：`README.md` 与 `README.zh.md`、`docs/*.md` 与 `docs/*.zh.md` 成对存在，改动一侧时同步另一侧。
 5. 完成前运行 `pnpm run check`；涉及发布内容时再运行 `pnpm pack --dry-run`，确认产物不包含 `node_modules/`、测试文件或敏感数据。
 
 ## 完成标准
