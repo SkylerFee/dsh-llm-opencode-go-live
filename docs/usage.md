@@ -17,7 +17,7 @@ cd /absolute/path/to/deepseek-harness
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
+Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_LIVE_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
 
 ## Configure the key and use a model
 
@@ -29,11 +29,11 @@ The catalog comes from Models.dev and fetching it needs no API key; the key is r
 
 ## Configuration reference
 
-The bundled `cordis.patch.yml` already configures a persistent snapshot. When mounting the Cordis plugin by hand, these fields are available in the owning config; `apiKeyEnv` holds the credential reference name, not the key value:
+The bundled `cordis.patch.yml` already sets `catalog.cachePath` to `dshHomePath('cache', 'opencode-go-live.json')`, so an installed bundle persists the catalog by default. When mounting the Cordis plugin by hand, these fields are available in the owning config; `apiKeyEnv` holds the credential reference name, not the key value:
 
 ```yaml
 llm-opencode-go-live:
-  apiKeyEnv: OPENCODE_GO_API_KEY
+  apiKeyEnv: OPENCODE_GO_LIVE_API_KEY
   catalog:
     cachePath: /absolute/path/to/opencode-go-live.json
     refreshOnStart: true
@@ -43,8 +43,8 @@ llm-opencode-go-live:
 
 | Field | Default | Effect |
 | --- | --- | --- |
-| `apiKeyEnv` | `OPENCODE_GO_API_KEY` | Reference resolved by the DSH credentials service on every model call. |
-| `catalog.cachePath` | unset | Absolute path; when set, the catalog is restored across restarts, otherwise it lives in memory only. |
+| `apiKeyEnv` | `OPENCODE_GO_LIVE_API_KEY` | Reference resolved by the DSH credentials service on every model call; independent of the reference the built-in `opencode-go` route uses. |
+| `catalog.cachePath` | `dshHomePath('cache', 'opencode-go-live.json')` | Absolute path; the bundle points it at `cache/opencode-go-live.json` under the Harness home (`~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME`), which is how the catalog survives restarts. Only a hand-mounted plugin that leaves it unset keeps the catalog in memory. |
 | `catalog.refreshOnStart` | `true` | Refresh the catalog from Models.dev at startup. |
 | `catalog.refreshIntervalMs` | `21600000` | Interval for later refreshes in milliseconds; `0` disables scheduled refreshes. |
 | `catalog.refreshTimeoutMs` | `10000` | Timeout for a single catalog request in milliseconds; `0` disables the timeout. |
@@ -57,7 +57,7 @@ The catalog fields belong to plugin config; the plugin's Models card edits the A
 | --- | --- |
 | The OpenCode Go (Live) provider is missing | Check that the plugin is installed in the current `web` profile, restart that profile, and look for plugin load errors in the startup log. |
 | The provider is visible but has no live models | Check whether the DSH process can reach Models.dev; the first load has no snapshot and keeps an empty catalog, and a failed startup refresh writes a warning. |
-| `MISSING_CREDENTIAL` is returned | Save the API key in the plugin's Models card; confirm the running DSH uses the same profile and credential reference. |
+| `MISSING_CREDENTIAL` is returned | Save the API key in the plugin's Models card; confirm the running DSH uses the same profile and credential reference. Upgrading from a build whose default reference was `OPENCODE_GO_API_KEY` requires entering the key once more for this card. |
 | A model is selectable but API calls fail | Catalog loading and model calls are independent. Check DSH call errors and service logs, and use the error code to separate authentication, permission, rate-limit, and network problems; never paste keys into logs or tickets. |
 | Old models still show after a refresh | Check the refresh warning; the plugin retains the last successful catalog when the source fails, every entry is rejected, or the snapshot cannot be saved. |
 

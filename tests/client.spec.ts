@@ -59,7 +59,7 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
   })
   let component: ((props: { t: (key: string) => string }) => Element) | undefined
   let dictionary: Record<string, string> = {}
-  let ref = 'OPENCODE_GO_API_KEY'
+  let ref = 'OPENCODE_GO_LIVE_API_KEY'
   let models = [{ id: 'new-model', name: 'New Model' }]
   let configured = false
   const saved: [string, string][] = []
@@ -125,7 +125,7 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
   tree = render()
   await settle()
   tree = render()
-  assert.deepEqual(saved, [['OPENCODE_GO_API_KEY', 'sk-test-live']])
+  assert.deepEqual(saved, [['OPENCODE_GO_LIVE_API_KEY', 'sk-test-live']])
   assert.equal(find(tree, node => node.type === 'input'), undefined)
   assert.ok(find(tree, node => node.type === 'p' && node.children[0] === dictionary.configured))
 
@@ -144,7 +144,7 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
   assert.ok(find(tree, node => node.type === 'code' && node.children[0] === 'later-model'))
   tree = render()
   assert.equal(find(tree, node => node.type === 'input'), undefined)
-  assert.deepEqual(saved, [['OPENCODE_GO_API_KEY', 'sk-test-live']])
+  assert.deepEqual(saved, [['OPENCODE_GO_LIVE_API_KEY', 'sk-test-live']])
   find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
   tree = render()
   find(tree, node => node.type === 'input')!.props.onChange({ target: { value: 'sk-next-live' } })

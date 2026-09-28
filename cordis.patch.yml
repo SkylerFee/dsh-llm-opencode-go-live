@@ -2,6 +2,6 @@
     - id: llm-opencode-go-live
       name: '@deepseek-ai/dsh-llm-opencode-go-live'
       config:
-        apiKeyEnv: OPENCODE_GO_API_KEY
+        apiKeyEnv: OPENCODE_GO_LIVE_API_KEY
         catalog:
           cachePath: !!js dshHomePath('cache', 'opencode-go-live.json')

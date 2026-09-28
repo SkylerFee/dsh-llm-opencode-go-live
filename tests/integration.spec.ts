@@ -25,7 +25,7 @@ test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () =
     let catalogEvents = 0
     ctx.on('llm/adapters-updated', () => { catalogEvents += 1 })
     const fiber = await ctx.plugin(Live, {
-      apiKeyEnv: 'OPENCODE_GO_API_KEY',
+      apiKeyEnv: 'OPENCODE_GO_LIVE_API_KEY',
       catalog: { cachePath, refreshOnStart: false, refreshIntervalMs: 0 },
     })
     assert.deepEqual(ctx.llm.listProviders(), [{ id: Live.ROUTE_ID, name: Live.DISPLAY_NAME }])
@@ -49,7 +49,7 @@ test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () =
       type: 'finish', reason: {
         kind: 'error', failure: {
           code: 'MISSING_CREDENTIAL',
-          message: 'llm-opencode-go-live: missing credential OPENCODE_GO_API_KEY',
+          message: 'llm-opencode-go-live: missing credential OPENCODE_GO_LIVE_API_KEY',
         },
       },
     })

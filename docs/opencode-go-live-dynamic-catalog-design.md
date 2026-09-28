@@ -66,7 +66,7 @@ At startup the snapshot in the configured path is restored first, then a network
 
 Once a conversion has completed and been saved successfully, the runtime replaces the whole snapshot at once and then tells DSH to update the model list. Later model lookups and new requests use the new catalog; calls already prepared keep the model data from when they were prepared. A failed source fetch, conversion, or save retains the old snapshot. A legitimately empty catalog clears the models; if the source has entries but all of them are rejected for reasons other than deprecation, the old snapshot is retained.
 
-When `catalog.cachePath` is configured, JSON storage first writes a temporary file with mode `0600` and then replaces the snapshot with `rename`; without that path the snapshot lives in memory only. The snapshot contains the check time, the converted models, and diagnostics; it never contains the API key, conversation requests, or responses. A snapshot that cannot be read or fails validation is treated as absent.
+The bundle sets `catalog.cachePath` by default to `cache/opencode-go-live.json` under the Harness home (`~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when set), so an installed bundle persists the catalog across restarts; a hand-mounted plugin that leaves the field unset keeps it in memory only. When `catalog.cachePath` is configured, JSON storage first writes a temporary file with mode `0600` and then replaces the snapshot with `rename`. The snapshot contains the check time, the converted models, and diagnostics; it never contains the API key, conversation requests, or responses. A snapshot that cannot be read or fails validation is treated as absent.
 
 ## Models and protocols
 
@@ -98,7 +98,7 @@ sequenceDiagram
     end
 ```
 
-`apiKeyEnv` is a credential reference name, `OPENCODE_GO_API_KEY` by default; neither the configuration nor the catalog cache stores the key value. The plugin card reads the current reference from the DSH settings description and then writes the key through the credentials service; the adapter resolves the current reference on every request. A missing credential or an unavailable service returns `MISSING_CREDENTIAL`. All three supported request protocols set `x-opencode-session` from the DSH session id so the upstream can recognize the same conversation.
+`apiKeyEnv` is a credential reference name, `OPENCODE_GO_LIVE_API_KEY` by default; that default is deliberately distinct from the `OPENCODE_GO_API_KEY` the Models page derives for the built-in `opencode-go` route, so the two routes never resolve one credential record. Neither the configuration nor the catalog cache stores the key value. The plugin card reads the current reference from the DSH settings description and then writes the key through the credentials service; the adapter resolves the current reference on every request. A missing credential or an unavailable service returns `MISSING_CREDENTIAL`. All three supported request protocols set `x-opencode-session` from the DSH session id so the upstream can recognize the same conversation.
 
 ## Failures and boundaries
 

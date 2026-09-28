@@ -12,9 +12,12 @@ export interface Config {
   catalog?: CatalogConfig
 }
 
-/** 暴露凭据引用供供应商页面编辑，目录参数仍由插件配置管理。 */
+/**
+ * 暴露凭据引用供供应商页面编辑，目录参数仍由插件配置管理。
+ * 默认引用名取自 live 路由，避免与 Models 页为内置 `opencode-go` 派生的 `OPENCODE_GO_API_KEY` 撞名。
+ */
 export const Config = z.object({
-  apiKeyEnv: z.string().role('credential-ref').default('OPENCODE_GO_API_KEY').volatile(),
+  apiKeyEnv: z.string().role('credential-ref').default('OPENCODE_GO_LIVE_API_KEY').volatile(),
   catalog: z.object({
     cachePath: z.string(),
     refreshOnStart: z.boolean(),
@@ -25,7 +28,11 @@ export const Config = z.object({
 
 /** 目录刷新配置。 */
 export interface CatalogConfig {
-  /** 可选的绝对路径；启用跨重启目录恢复。 */
+  /**
+   * 可选的绝对路径；启用跨重启目录恢复。
+   * bundle 的 `cordis.patch.yml` 默认将其设为 Harness home 下的 `cache/opencode-go-live.json`
+   * （默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）；未设置时目录只保存在内存。
+   */
   cachePath?: string
   /** 启动后是否允许网络刷新。默认值为 true。 */
   refreshOnStart?: boolean

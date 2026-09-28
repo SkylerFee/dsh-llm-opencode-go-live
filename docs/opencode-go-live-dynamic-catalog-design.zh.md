@@ -66,7 +66,7 @@ sequenceDiagram
 
 转换完成并成功保存后，运行时一次替换整份快照，再通知 DSH 更新模型列表。后续模型查询和新请求使用新目录；已经准备的调用继续使用准备时的模型资料。来源获取、转换或保存失败时保留旧快照。合法空目录会清空模型；如果来源含有条目但全部因非弃用原因被拒绝，则保留旧快照。
 
-配置 `catalog.cachePath` 时，JSON 存储先写权限为 `0600` 的临时文件，再通过 `rename` 替换快照；没有该路径时只保存于内存。快照包含检查时间、转换后的模型和诊断，不包含 API Key、对话请求或响应。无法读取或未通过校验的快照按不存在处理。
+bundle 默认把 `catalog.cachePath` 设为 Harness home 下的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下），因此默认安装即跨重启持久化；手工挂载且未设置该字段时只保存于内存。配置该路径时，JSON 存储先写权限为 `0600` 的临时文件，再通过 `rename` 替换快照。快照包含检查时间、转换后的模型和诊断，不包含 API Key、对话请求或响应。无法读取或未通过校验的快照按不存在处理。
 
 ## 模型与协议
 
@@ -98,7 +98,7 @@ sequenceDiagram
     end
 ```
 
-`apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_API_KEY`；配置和目录缓存均不保存密钥值。插件卡片从 DSH 设置描述读取当前引用，再通过凭据服务写入密钥；适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
+`apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_LIVE_API_KEY`；该默认名刻意不同于 Models 页为内置 `opencode-go` 路由派生的 `OPENCODE_GO_API_KEY`，两条路由不会解析同一条凭据记录。配置和目录缓存均不保存密钥值。插件卡片从 DSH 设置描述读取当前引用，再通过凭据服务写入密钥；适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
 
 ## 故障与边界
 
