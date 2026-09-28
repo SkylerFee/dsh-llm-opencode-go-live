@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-llm-opencode-go-live
+# @skylerfee/dsh-llm-opencode-go-live
 
 [English](README.md) | 中文
 
@@ -6,7 +6,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 
 ## 快速开始
 
-在插件目录运行 `pnpm install && pnpm run check`，然后从 DSH 仓库根目录安装到 Web profile：
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）和 pnpm。在插件目录运行 `pnpm install && pnpm run check`，然后从 DSH 仓库根目录安装到 Web profile：
 
 ```sh
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live

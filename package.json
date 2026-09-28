@@ -1,8 +1,29 @@
 {
-  "name": "@deepseek-ai/dsh-llm-opencode-go-live",
+  "name": "@skylerfee/dsh-llm-opencode-go-live",
   "version": "0.1.0-alpha.1",
   "description": "OpenCode Go 动态模型目录插件",
   "license": "MIT",
+  "author": "SkylerFee",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SkylerFee/dsh-llm-opencode-go-live.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SkylerFee/dsh-llm-opencode-go-live/issues"
+  },
+  "homepage": "https://github.com/SkylerFee/dsh-llm-opencode-go-live#readme",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "opencode-go",
+    "models.dev",
+    "llm",
+    "plugin"
+  ],
+  "packageManager": "pnpm@10.27.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -38,7 +59,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test tests/*.spec.ts",
-    "check": "pnpm run build && pnpm run test"
+    "check": "pnpm run build && pnpm run test",
+    "prepare": "pnpm run build",
+    "prepublishOnly": "pnpm run check"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",

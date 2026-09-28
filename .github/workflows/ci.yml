@@ -1,0 +1,37 @@
+# Build and test every push to main and every pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The workflow only reads the checked-out sources.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+      # The pnpm version is read from `packageManager` in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Matches the `engines.node` floor this package declares.
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # Builds with tsc and runs the offline test suite; no network access to
+      # Models.dev or the OpenCode Go API is needed.
+      - name: Build and test
+        run: pnpm run check

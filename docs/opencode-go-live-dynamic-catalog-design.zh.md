@@ -2,7 +2,7 @@
 
 [English](opencode-go-live-dynamic-catalog-design.md) | 中文
 
-本文描述 `@deepseek-ai/dsh-llm-opencode-go-live` 当前的目录、凭据和请求链路。安装与操作步骤见[使用指南](usage.zh.md)，配置字段见该指南的[配置参考](usage.zh.md#配置参考)。
+本文描述 `@skylerfee/dsh-llm-opencode-go-live` 当前的目录、凭据和请求链路。安装与操作步骤见[使用指南](usage.zh.md)，配置字段见该指南的[配置参考](usage.zh.md#配置参考)。
 
 ## 组件与数据流
 

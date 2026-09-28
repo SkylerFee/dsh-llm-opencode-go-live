@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-llm-opencode-go-live
+# @skylerfee/dsh-llm-opencode-go-live
 
 English | [中文](README.zh.md)
 
@@ -6,7 +6,7 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 
 ## Quick Start
 
-Run `pnpm install && pnpm run check` in this plugin checkout, then install its bundle from the DSH repository root:
+Node.js 22.19 or newer (the floor pi-ai declares) and pnpm are required. Run `pnpm install && pnpm run check` in this plugin checkout, then install its bundle from the DSH repository root:
 
 ```sh
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live

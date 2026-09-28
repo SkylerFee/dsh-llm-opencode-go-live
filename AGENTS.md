@@ -6,7 +6,7 @@
 
 ## 项目边界
 
-- 本目录是独立的 `@deepseek-ai/dsh-llm-opencode-go-live` 插件包；插件直接注册 `ctx.llm` 原生适配器，不要求主仓库修改 `llm-pi-ai`。
+- 本目录是独立的 `@skylerfee/dsh-llm-opencode-go-live` 插件包；插件直接注册 `ctx.llm` 原生适配器，不要求主仓库修改 `llm-pi-ai`。
 - `opencode-go-live` 是本插件唯一拥有的路由；不得覆盖或改写内置 `opencode-go`。
 - 远端 `opencode-go` 目录决定模型成员；`src/policy.ts` 仅为已知特殊协议提供覆盖，未知模型使用通用 OpenAI Completions 策略。来源没有工具调用能力或限制时不得注册；来源能力不得扩大已知策略声明的范围。
 - API Key 只允许通过 `apiKeyEnv` 引用由宿主凭据服务解析；缓存、日志、错误和测试 fixture 不得保存密钥、请求内容或响应内容。

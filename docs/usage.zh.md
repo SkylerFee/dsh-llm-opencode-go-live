@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 和 pnpm，且 DSH 的 Web profile 能正常启动。使用本地源码时，先在插件目录构建，再从 DSH 仓库根目录安装 bundle：
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）和 pnpm，且 DSH 的 Web profile 能正常启动。使用本地源码时，先在插件目录构建，再从 DSH 仓库根目录安装 bundle：
 
 ```sh
 cd /absolute/path/to/dsh-llm-opencode-go-live

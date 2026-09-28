@@ -6,7 +6,7 @@ This guide targets a DeepSeek Harness installation whose Web profile already sta
 
 ## Prerequisites and installation
 
-You need Node.js and pnpm, and the DSH Web profile must start correctly. To use the local source, build in the plugin checkout first, then install the bundle from the DSH repository root:
+You need Node.js 22.19 or newer (the floor pi-ai declares) and pnpm, and the DSH Web profile must start correctly. To use the local source, build in the plugin checkout first, then install the bundle from the DSH repository root:
 
 ```sh
 cd /absolute/path/to/dsh-llm-opencode-go-live

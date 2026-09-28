@@ -1,6 +1,6 @@
 /** Web 客户端入口：随插件包加载，在 Models 页添加供应商卡片。 */
 window.__ModuleLoader__.load({
-  id: '@deepseek-ai/dsh-llm-opencode-go-live',
+  id: '@skylerfee/dsh-llm-opencode-go-live',
   factory(require) {
     const React = require('react')
     const h = React.createElement

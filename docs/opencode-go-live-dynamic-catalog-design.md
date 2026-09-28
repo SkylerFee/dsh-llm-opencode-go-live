@@ -2,7 +2,7 @@
 
 English | [中文](opencode-go-live-dynamic-catalog-design.zh.md)
 
-This document describes the current catalog, credential, and request paths of `@deepseek-ai/dsh-llm-opencode-go-live`. Installation and operation steps are in the [usage guide](usage.md); configuration fields are in its [configuration reference](usage.md#configuration-reference).
+This document describes the current catalog, credential, and request paths of `@skylerfee/dsh-llm-opencode-go-live`. Installation and operation steps are in the [usage guide](usage.md); configuration fields are in its [configuration reference](usage.md#configuration-reference).
 
 ## Components and data flow
 
