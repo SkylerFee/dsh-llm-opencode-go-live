@@ -32,7 +32,7 @@ flowchart LR
 | `src/store.ts` | 读取和保存内存或 JSON 目录快照。 |
 | `src/provider.ts` | 复用 `PiAiAdapter` 和 pi-ai OpenCode Go 传输，将会话 ID 传给上游。 |
 | `src/index.ts` | 注册 Cordis 插件、模型路由、刷新任务和凭据解析。 |
-| `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供密钥编辑和模型列表。 |
+| `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供按需展开的密钥编辑和模型列表。 |
 
 ## 目录生命周期
 

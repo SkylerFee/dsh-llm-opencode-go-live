@@ -21,7 +21,7 @@ interface Element {
   children: unknown[]
 }
 
-test('独立客户端入口显示动态模型并按当前引用保存密钥', async () => {
+test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模型', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.equal(pkg.exports['./client'], './client.js')
@@ -104,8 +104,21 @@ test('独立客户端入口显示动态模型并按当前引用保存密钥', as
   await settle()
   let tree = render()
   assert.equal(find(tree, node => node.type === 'code' && node.children[0] === 'new-model')?.children[0], 'new-model')
+  assert.equal(find(tree, node => node.type === 'input'), undefined)
+  find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
+  tree = render()
   const input = find(tree, node => node.type === 'input')!
-  input.props.onChange({ target: { value: 'sk-test-live' } })
+  input.props.onChange({ target: { value: 'discarded-key' } })
+  tree = render()
+  find(tree, node => node.type === 'button' && node.children[0] === dictionary.cancel)!.props.onClick()
+  tree = render()
+  assert.equal(find(tree, node => node.type === 'input'), undefined)
+  assert.deepEqual(saved, [])
+  find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
+  tree = render()
+  assert.equal(find(tree, node => node.type === 'input')?.props.value, '')
+  const activeInput = find(tree, node => node.type === 'input')!
+  activeInput.props.onChange({ target: { value: 'sk-test-live' } })
   tree = render()
   await find(tree, node => node.type === 'form')!.props.onSubmit({ preventDefault() {} })
   await settle()
@@ -113,8 +126,15 @@ test('独立客户端入口显示动态模型并按当前引用保存密钥', as
   await settle()
   tree = render()
   assert.deepEqual(saved, [['OPENCODE_GO_API_KEY', 'sk-test-live']])
-  assert.equal(find(tree, node => node.type === 'input')?.props.value, '')
+  assert.equal(find(tree, node => node.type === 'input'), undefined)
   assert.ok(find(tree, node => node.type === 'p' && node.children[0] === dictionary.configured))
+
+  // 编辑期间凭据引用变化：草稿作废，旧引用的密钥不得写进新引用
+  find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
+  tree = render()
+  find(tree, node => node.type === 'input')!.props.onChange({ target: { value: 'stale-draft-key' } })
+  tree = render()
+  assert.equal(find(tree, node => node.type === 'input')?.props.value, 'stale-draft-key')
 
   ref = 'CUSTOM_GO_KEY'
   models = [{ id: 'later-model', name: 'Later Model' }]
@@ -122,6 +142,11 @@ test('独立客户端入口显示动态模型并按当前引用保存密钥', as
   await settle()
   tree = render()
   assert.ok(find(tree, node => node.type === 'code' && node.children[0] === 'later-model'))
+  tree = render()
+  assert.equal(find(tree, node => node.type === 'input'), undefined)
+  assert.deepEqual(saved, [['OPENCODE_GO_API_KEY', 'sk-test-live']])
+  find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
+  tree = render()
   find(tree, node => node.type === 'input')!.props.onChange({ target: { value: 'sk-next-live' } })
   tree = render()
   await find(tree, node => node.type === 'form')!.props.onSubmit({ preventDefault() {} })

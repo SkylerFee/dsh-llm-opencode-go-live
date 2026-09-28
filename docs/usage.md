@@ -20,7 +20,7 @@ pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ## 配置密钥并使用模型
 
 1. 启动 Web profile，打开 **Settings → Models**，找到由插件提供的 **OpenCode Go (Live)** 卡片。
-2. 在卡片的 **API Key** 输入框填写 OpenCode Go 密钥并应用。密钥写入 DSH 凭据服务，页面不会回显已保存的值；绿色状态表示已确认该引用有凭据。
+2. 卡片默认只显示密钥状态和模型列表；点击“编辑”后在 **API Key** 输入框填写 OpenCode Go 密钥并应用，或点击“取消”放弃输入。密钥写入 DSH 凭据服务，页面不会回显已保存的值；状态提示表示已确认该引用有凭据。
 3. 等待动态目录加载，展开卡片的模型列表，或在模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
 
 模型目录来自 Models.dev，获取目录不需要 API Key；真正请求 OpenCode Go API 时才会解析密钥。选择模型后若仍无法调用，请按下方[排查](#排查)先区分凭据错误与上游响应。
