@@ -6,11 +6,20 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 
 ## Quick Start
 
-Node.js 22.19 or newer (the floor pi-ai declares) and pnpm are required. Run `pnpm install && pnpm run check` in this plugin checkout, then install its bundle from the DSH repository root:
+Node.js 22.19 or newer (the floor pi-ai declares) and pnpm are required. From the DSH repository root, install the bundle from a released tag:
 
 ```sh
-pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.1
 ```
+
+A git install fetches sources, so the package builds `lib/` through its `prepare` script. pnpm blocks that script until the consumer allows it: the first `add` fails and prints the exact package key, which goes into the profile's `pnpm-workspace.yaml` before the command is re-run.
+
+```yaml
+allowBuilds:
+  '@skylerfee/dsh-llm-opencode-go-live': true
+```
+
+That allowance lets the package's code run with your user's permissions at install time, so pin a tag or commit. A local checkout (`pnpm install && pnpm run check` first) or a `pnpm pack` tarball installs without any allowance — see the [usage guide](docs/usage.md#prerequisites-and-installation).
 
 Restart the Web profile. Open **Settings → Models**, click **Edit** in the plugin-owned **OpenCode Go (Live)** card, enter your API key, and apply it. Choose a model under `opencode-go-live` in the model picker. DSH stores the key through its credentials service under the default reference `OPENCODE_GO_LIVE_API_KEY`, which is deliberately distinct from the `OPENCODE_GO_API_KEY` that the Models page derives for the built-in `opencode-go` route, so the two routes never share one credential record. The bundle stores a catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model.
 
