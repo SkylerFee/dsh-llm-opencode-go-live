@@ -9,7 +9,7 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 Node.js 22.19 or newer (the floor pi-ai declares) and pnpm are required. From the DSH repository root, install the bundle from a released tag:
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.1
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
 ```
 
 A local checkout or a `pnpm pack` tarball works too — see the [usage guide](docs/usage.md#prerequisites-and-installation) for both commands.

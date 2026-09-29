@@ -13,7 +13,7 @@ You need Node.js 22.19 or newer (the floor pi-ai declares) and pnpm, and the DSH
 From the DSH repository root, install a released tag:
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.1
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
 ```
 
 A git install fetches sources rather than built artifacts, so the package builds `lib/` through its `prepare` script during installation.
@@ -31,7 +31,7 @@ cd /absolute/path/to/deepseek-harness
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-A tarball from `pnpm pack` installs with `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.1.tgz`.
+A tarball from `pnpm pack` installs with `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.2.tgz`.
 
 Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_LIVE_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
 

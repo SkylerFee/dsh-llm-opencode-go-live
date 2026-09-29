@@ -9,7 +9,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）和 pnpm。从 DSH 仓库根目录安装已发布 tag 的 bundle：
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.1
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
 ```
 
 本地 checkout 或 `pnpm pack` 产出的 tarball 也可以安装——两条命令见[使用指南](docs/usage.zh.md#准备与安装)。

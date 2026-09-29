@@ -13,7 +13,7 @@
 从 DSH 仓库根目录安装已发布的 tag：
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.1
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
 ```
 
 git 安装拉取的是源码而非构建产物，因此包会在安装期间通过 `prepare` 脚本构建 `lib/`。
@@ -31,7 +31,7 @@ cd /absolute/path/to/deepseek-harness
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-`pnpm pack` 产出的 tarball 可用 `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.1.tgz` 安装。
+`pnpm pack` 产出的 tarball 可用 `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.2.tgz` 安装。
 
 已安装 `dsh` CLI 的环境，也可将最后一行改为 `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`。安装会把包内 `cordis.patch.yml` 加入 Web profile 的 bundle 层，设置默认凭据引用 `OPENCODE_GO_LIVE_API_KEY`，并将目录快照放在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会更改默认模型。安装或更新 bundle 后重启 Web profile；从源码运行 DSH 时，主仓库需要已有构建产物。
 
