@@ -4,6 +4,10 @@
 
 涉及模型来源、协议策略、缓存、刷新、路由或验收行为时，先阅读 [动态目录设计](docs/opencode-go-live-dynamic-catalog-design.md)（[中文版](docs/opencode-go-live-dynamic-catalog-design.zh.md)），并把它作为当前行为真源。设计文档与实现不一致时，先确认是设计变更还是实现缺陷，再修改对应一处。
 
+## 分支与发布
+
+新功能或文档完善从最新 `main` 创建 `feat/<topic>` 分支，Bug 修复创建 `fix/<topic>` 分支。准备 PR、版本更新、标签或 GitHub Release 时，先阅读[开发与发布流程](docs/development-and-release.zh.md)（[English](docs/development-and-release.md)）；合并前确认 `check` 通过，发布标签只指向 `main` 上通过 CI 的提交。
+
 ## 项目边界
 
 - 本目录是独立的 `@skylerfee/dsh-llm-opencode-go-live` 插件包；插件直接注册 `ctx.llm` 原生适配器，不要求主仓库修改 `llm-pi-ai`。
