@@ -41,6 +41,7 @@
     "lib/**/*.d.ts",
     "cordis.patch.yml",
     "docs/*.md",
+    "docs/img/*.png",
     "client.js"
   ],
   "dsh": {

@@ -16,9 +16,23 @@ pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1
 
 重启 Web profile 后，打开 **Settings → Models**，在插件提供的 **OpenCode Go (Live)** 卡片点击“编辑”，填写 API Key 并应用，再从模型选择器选择 `opencode-go-live` 下的模型。密钥由 DSH 凭据服务保存，默认引用名为 `OPENCODE_GO_LIVE_API_KEY`，该名称刻意区别于 Models 页为内置 `opencode-go` 派生的 `OPENCODE_GO_API_KEY`，两条路由不会共用同一条凭据记录；bundle 默认将模型目录快照保存在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会切换默认模型。
 
+插件在 **Settings → Models** 中的卡片——密钥编辑态，以及目录解析后的动态模型列表：
+
+![在 Settings → Models 中编辑 OpenCode Go (Live) 卡片](docs/img/edit.png)
+
+![展开动态模型列表的 OpenCode Go (Live) 卡片](docs/img/view.png)
+
+在会话里，live 模型在模型选择器中自成一组，旁边可以选推理等级：
+
+![模型选择器中的 OpenCode Go (Live) 分组](docs/img/check.png)
+
+![会话中的模型与推理等级菜单](docs/img/check-think.png)
+
 ## 文档
 
 - [使用指南](docs/usage.zh.md)：安装、密钥配置、配置字段与故障排查。
 - [架构文档](docs/opencode-go-live-dynamic-catalog-design.zh.md)：组件职责、Mermaid 数据流与时序图、目录刷新和请求行为。
 
 插件需要 DSH 的 `llm` 与 `credentials` 服务；Web 设置页还使用 `settings` 服务。刷新失败会保留上次成功目录，首次无目录时供应商可见但没有 live 模型；模型调用缺少凭据时返回 `MISSING_CREDENTIAL`。目录可见不代表 API 调用已获上游授权。
+
+图片输入（`read_image` 工具结果或粘贴的截图）通过宿主的 durable 附件服务解析，与内置路由行为一致；未挂载附件服务时，携带图片的请求以 `UNSUPPORTED_CONTENT` 失败而不是静默丢弃。文件附件从不以原始字节发给任何 provider：请求组装层在所有路由上把文件块投影为确定性句柄文本。声明的输入模态跟随远端目录的 `modalities.input`（text 与 image），未声明图片输入的模型收到纯文本图片占位。
