@@ -36,6 +36,7 @@ git 安装拉取的是源码而非构建产物，而 pnpm 默认阻止依赖执�
 
 - [使用指南](docs/usage.zh.md)：安装、密钥配置、配置字段与故障排查。
 - [架构文档](docs/opencode-go-live-dynamic-catalog-design.zh.md)：组件职责、Mermaid 数据流与时序图、目录刷新和请求行为。
+- [开发与发布流程](docs/development-and-release.zh.md)：新功能与 Bug 修复的 PR、验证、版本标签和 GitHub 预发布。
 
 插件需要 DSH 的 `llm` 与 `credentials` 服务；Web 设置页还使用 `settings` 服务。刷新失败会保留上次成功目录，首次无目录时供应商可见但没有 live 模型；模型调用缺少凭据时返回 `MISSING_CREDENTIAL`。目录可见不代表 API 调用已获上游授权。
 

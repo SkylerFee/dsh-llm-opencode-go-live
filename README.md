@@ -36,6 +36,7 @@ In a session, the live models sit in their own group in the model picker, with t
 
 - [Usage guide](docs/usage.md): installation, key setup, configuration, and troubleshooting.
 - [Architecture](docs/opencode-go-live-dynamic-catalog-design.md): component responsibilities, Mermaid data-flow and sequence diagrams, catalog refresh, and request behavior.
+- [Development and release](docs/development-and-release.md): feature and bug-fix PRs, verification, version tags, and GitHub pre-releases.
 
 The plugin requires the DSH `llm` and `credentials` services; the Web settings page also uses `settings`. A failed refresh retains the last successful catalog. With no catalog, the provider remains visible but has no live models. Calls without a credential return `MISSING_CREDENTIAL`. A visible model does not establish that the upstream API will authorize its requests.
 
