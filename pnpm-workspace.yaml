@@ -1,0 +1,12 @@
+# pnpm blocks a dependency's install scripts until the consumer reviews it.
+# Listing every package our tree actually ships an install script for keeps
+# that review explicit: `false` denies a script we do not need.
+packages:
+  - .
+
+allowBuilds:
+  # tsx runs on esbuild; its postinstall supplies the native binary.
+  esbuild: true
+  # Both arrive through @earendil-works/pi-ai, and their scripts are no-ops here.
+  '@google/genai': false
+  protobufjs: false

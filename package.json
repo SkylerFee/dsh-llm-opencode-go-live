@@ -20,7 +20,7 @@
     "llm",
     "plugin"
   ],
-  "packageManager": "pnpm@10.27.0",
+  "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=22.19.0"
   },
