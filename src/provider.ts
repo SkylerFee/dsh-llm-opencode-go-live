@@ -78,14 +78,24 @@ function profileFor(models: readonly Model<Api>[]): ResolvedPiAiProviderProfile 
 }
 
 /**
+ * 宿主媒体解析依赖：durable 附件存储与图片执行世界路径桥接。
+ * 两个钩子来自宿主 `attachments`/`fs` 服务；缺失时请求中的图片引用会被拒绝，
+ * 文件块不受影响（请求组装层已把文件投影为句柄文本）。
+ */
+export type MediaResolution = Pick<PiAiAdapterOptions, 'resolveAttachments' | 'resolveImageAccess'>
+
+/**
  * 创建直接挂载到 Harness `ctx.llm` 的原生适配器。
  * @param snapshot - 返回最近一次成功目录快照的函数。
  * @param resolveApiKey - 每次请求解析 OpenCode Go 凭据的函数。
+ * @param media - 可选的宿主附件解析钩子；注入后请求历史中的图片引用会解析为实际图片内容，
+ *   与宿主内置适配器的图片/文件输入行为一致。
  * @returns 可传给 `ctx.llm.registerAdapter()` 的 LLM 适配器。
  */
 export function createDynamicAdapter(
   snapshot: () => CatalogSnapshot | undefined,
   resolveApiKey: ApiKeyResolver,
+  media: MediaResolution = {},
 ): PiAiAdapter {
   let observed: CatalogSnapshot | undefined
   let profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile> = new Map([[ROUTE_ID, profileFor([])]])
@@ -105,6 +115,7 @@ export function createDynamicAdapter(
         fileExists: async () => false,
       },
     },
+    ...media,
   }
   return new PiAiAdapter(options)
 }

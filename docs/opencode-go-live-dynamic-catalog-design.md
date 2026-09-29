@@ -100,6 +100,8 @@ sequenceDiagram
 
 `apiKeyEnv` is a credential reference name, `OPENCODE_GO_LIVE_API_KEY` by default; that default is deliberately distinct from the `OPENCODE_GO_API_KEY` the Models page derives for the built-in `opencode-go` route, so the two routes never resolve one credential record. Neither the configuration nor the catalog cache stores the key value. The plugin card reads the current reference from the DSH settings description and then writes the key through the credentials service; the adapter resolves the current reference on every request. A missing credential or an unavailable service returns `MISSING_CREDENTIAL`. All three supported request protocols set `x-opencode-session` from the DSH session id so the upstream can recognize the same conversation.
 
+Media inputs reuse the host's durable attachment service. The adapter resolves the host `attachments` service (and the `fs` service for read-only path bridging) at request time, so image references in the request history — a `read_image` tool result or a pasted screenshot — are decoded, sized to the profile's request-image budget, and sent as image content exactly like the built-in routes. Without a mounted attachment service, a request carrying an image fails with `UNSUPPORTED_CONTENT` (`pi-ai image input requires the durable attachment service`) instead of silently dropping the image. File attachments are never sent as bytes on any route: request assembly projects every file block to deterministic handle text (name, byte size, and the read-only saved path). Declared input modalities come from the remote catalog's `modalities.input` intersected with `text` and `image`; a model that declares no image input receives text-only image placeholders.
+
 ## Failures and boundaries
 
 | Situation | Behavior |
@@ -109,5 +111,6 @@ sequenceDiagram
 | Models exist but the API key is missing | Calls return `MISSING_CREDENTIAL`; save the key on the Models settings page first. |
 | The upstream rejects or rate-limits | pi-ai returns the corresponding call error; catalog refresh and API requests are two independent paths. |
 | `opencode-go-live` is taken by another adapter | Registration fails; a route can be held by only one adapter. |
+| Request history carries an image but no attachment service is mounted | The call fails with `UNSUPPORTED_CONTENT`; mount the host attachment service or keep the request text-only. |
 
-The plugin depends on the DSH `llm` and `credentials` services, and the plugin card additionally needs the DSH `settings` service and the `settings.models.footer` slot of the Models page. Catalog refresh uses the public Models.dev source and does not verify whether the key may call the OpenCode Go API; listing a model does not mean a request has already succeeded.
+The plugin depends on the DSH `llm` and `credentials` services, and the plugin card additionally needs the DSH `settings` service and the `settings.models.footer` slot of the Models page. Image input additionally uses the host `attachments` service (and `fs` for read-only path bridging) when those are mounted. Catalog refresh uses the public Models.dev source and does not verify whether the key may call the OpenCode Go API; listing a model does not mean a request has already succeeded.

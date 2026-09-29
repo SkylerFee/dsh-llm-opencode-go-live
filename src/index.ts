@@ -1,6 +1,6 @@
 import type {} from '@deepseek-ai/dsh-settings'
 import type { Context } from '@deepseek-ai/cordis'
-import { assertUsableApiKey, LlmError } from '@deepseek-ai/dsh-llm'
+import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Config, resolveConfig } from './config.js'
@@ -23,6 +23,7 @@ export type { CatalogSnapshot, CatalogStore } from './store.js'
 export { transformProvider } from './transform.js'
 export type { CatalogDiagnostic, TransformResult } from './transform.js'
 export { createDynamicAdapter, createDynamicProvider, DISPLAY_NAME, ROUTE_ID } from './provider.js'
+export type { MediaResolution } from './provider.js'
 
 export const name = 'llm-opencode-go-live'
 export const inject = ['llm', 'credentials']
@@ -181,6 +182,17 @@ export function apply(
           throw new LlmError(`llm-opencode-go-live: missing credential ${ref}`, 'MISSING_CREDENTIAL')
         }
         return assertUsableApiKey(value, 'llm-opencode-go-live', ref)
+      },
+      {
+        // 宿主附件服务与文件系统映射按请求解析，与内置适配器的接线一致；
+        // 挂载缺失时请求中的图片被明确拒绝，而不是静默丢弃。
+        resolveAttachments: () => ctx.get('attachments'),
+        resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
+          attachments,
+          hostPath => (ctx.get('fs') as { processPathFromHostPath(hostPath: string): string | undefined } | undefined)
+            ?.processPathFromHostPath(hostPath),
+          ref,
+        ),
       },
     ),
   )

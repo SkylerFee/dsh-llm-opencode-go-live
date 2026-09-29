@@ -100,6 +100,8 @@ sequenceDiagram
 
 `apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_LIVE_API_KEY`；该默认名刻意不同于 Models 页为内置 `opencode-go` 路由派生的 `OPENCODE_GO_API_KEY`，两条路由不会解析同一条凭据记录。配置和目录缓存均不保存密钥值。插件卡片从 DSH 设置描述读取当前引用，再通过凭据服务写入密钥；适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
 
+媒体输入复用宿主的 durable 附件服务。适配器在请求时解析宿主 `attachments` 服务（以及用于只读路径桥接的 `fs` 服务），因此请求历史中的图片引用——`read_image` 工具结果或粘贴的截图——会按 profile 的请求图片预算解码缩放后作为图片内容发送，与内置路由完全一致。未挂载附件服务时，携带图片的请求以 `UNSUPPORTED_CONTENT`（`pi-ai image input requires the durable attachment service`）失败，而不是静默丢弃图片。文件附件在任何路由上都不会以原始字节发送：请求组装层把每个文件块投影为确定性句柄文本（名称、字节数和只读保存路径）。声明的输入模态取远端目录 `modalities.input` 与 `text`、`image` 的交集；未声明图片输入的模型收到纯文本图片占位。
+
 ## 故障与边界
 
 | 情况 | 行为 |
@@ -109,5 +111,6 @@ sequenceDiagram
 | 有模型但 API Key 缺失 | 请求返回 `MISSING_CREDENTIAL`；先在 Models 设置页保存密钥。 |
 | 上游拒绝或限流 | pi-ai 返回相应调用错误；目录刷新与 API 请求是两条独立链路。 |
 | `opencode-go-live` 被其他适配器占用 | 注册失败；一个路由只能由一个适配器持有。 |
+| 请求历史携带图片但未挂载附件服务 | 调用以 `UNSUPPORTED_CONTENT` 失败；挂载宿主附件服务或保持请求纯文本。 |
 
-插件依赖 DSH 的 `llm`、`credentials` 服务，插件卡片还需要 DSH 的 `settings` 服务及 Models 页的 `settings.models.footer` 插槽。目录刷新使用公开的 Models.dev 来源，不验证密钥是否有 OpenCode Go API 调用权限；能列出模型不等于请求已经成功。
+插件依赖 DSH 的 `llm`、`credentials` 服务，插件卡片还需要 DSH 的 `settings` 服务及 Models 页的 `settings.models.footer` 插槽。挂载了宿主 `attachments` 服务（及用于只读路径桥接的 `fs` 服务）时，图片输入还会使用它们。目录刷新使用公开的 Models.dev 来源，不验证密钥是否有 OpenCode Go API 调用权限；能列出模型不等于请求已经成功。
