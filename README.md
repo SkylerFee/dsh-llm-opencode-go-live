@@ -36,3 +36,13 @@ In a session, the live models sit in their own group in the model picker, with t
 The plugin requires the DSH `llm` and `credentials` services; the Web settings page also uses `settings`. A failed refresh retains the last successful catalog. With no catalog, the provider remains visible but has no live models. Calls without a credential return `MISSING_CREDENTIAL`. A visible model does not establish that the upstream API will authorize its requests.
 
 Image inputs (a `read_image` tool result or a pasted screenshot) are resolved through the host's durable attachment service, exactly as on the built-in routes; when no attachment service is mounted, a request carrying an image fails with `UNSUPPORTED_CONTENT` instead of silently dropping it. File attachments never reach any provider as bytes: request assembly projects every file block to deterministic handle text on all routes. Declared input modalities follow the remote catalog's `modalities.input` (text and image), and a model that declares no image input receives text-only image placeholders.
+
+## Verification
+
+**Verified on macOS only.** The plugin's installation, the catalog refresh against the live Models.dev source, the Models settings card, and model calls were all exercised on a single macOS machine; Linux and Windows have not been run.
+
+CI executes the build and the offline test suite on `ubuntu-latest`. That is a build signal, not a runtime verification: the tests use fixed catalog doubles, and no automated run reaches the real OpenCode Go API.
+
+## License
+
+MIT © 2026 SkylerFee — see [LICENSE](LICENSE).

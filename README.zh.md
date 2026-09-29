@@ -36,3 +36,13 @@ pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1
 插件需要 DSH 的 `llm` 与 `credentials` 服务；Web 设置页还使用 `settings` 服务。刷新失败会保留上次成功目录，首次无目录时供应商可见但没有 live 模型；模型调用缺少凭据时返回 `MISSING_CREDENTIAL`。目录可见不代表 API 调用已获上游授权。
 
 图片输入（`read_image` 工具结果或粘贴的截图）通过宿主的 durable 附件服务解析，与内置路由行为一致；未挂载附件服务时，携带图片的请求以 `UNSUPPORTED_CONTENT` 失败而不是静默丢弃。文件附件从不以原始字节发给任何 provider：请求组装层在所有路由上把文件块投影为确定性句柄文本。声明的输入模态跟随远端目录的 `modalities.input`（text 与 image），未声明图片输入的模型收到纯文本图片占位。
+
+## 验证环境
+
+**仅在 macOS 上验证过。** 插件安装、对 Models.dev 线上目录的刷新、Models 设置卡片以及模型调用都在同一台 macOS 机器上跑通过；Linux 与 Windows 从未实际运行。
+
+CI 在 `ubuntu-latest` 上执行构建与离线测试套件。这只是构建信号，不是运行时验证：测试使用固定目录替身，没有任何自动化运行会访问真实的 OpenCode Go API。
+
+## 许可证
+
+MIT © 2026 SkylerFee，详见 [LICENSE](LICENSE)。
