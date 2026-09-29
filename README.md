@@ -6,7 +6,7 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 
 ## Quick Start
 
-Node.js 22.19 or newer (the floor pi-ai declares) and pnpm are required. From the DSH repository root, install the bundle from a released tag:
+Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1` — the image-input hooks it wires in ship in those versions. From the DSH repository root, install the bundle from a released tag:
 
 ```sh
 pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2

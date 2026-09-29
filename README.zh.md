@@ -6,7 +6,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 
 ## 快速开始
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）和 pnpm。从 DSH 仓库根目录安装已发布 tag 的 bundle：
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。从 DSH 仓库根目录安装已发布 tag 的 bundle：
 
 ```sh
 pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2

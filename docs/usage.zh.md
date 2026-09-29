@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）和 pnpm，且 DSH 的 Web profile 能正常启动。本包未发布到 registry，可从 git、tarball 或本地 checkout 安装。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——版本更旧的 Harness 会在安装时因 peer 解析失败。DSH 的 Web profile 必须能正常启动。本包未发布到 registry，可从 git、tarball 或本地 checkout 安装。
 
 ### 从 GitHub 安装
 

@@ -6,7 +6,7 @@ This guide targets a DeepSeek Harness installation whose Web profile already sta
 
 ## Prerequisites and installation
 
-You need Node.js 22.19 or newer (the floor pi-ai declares) and pnpm, and the DSH Web profile must start correctly. The package is not published to a registry, so install it from git, from a tarball, or from a local checkout.
+You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1` as peers — an older Harness fails peer resolution at install time. The DSH Web profile must start correctly. The package is not published to a registry, so install it from git, from a tarball, or from a local checkout.
 
 ### Install from GitHub
 
