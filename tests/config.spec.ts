@@ -27,3 +27,12 @@ test('bundle 补丁把目录快照放在 Harness home 的 cache 目录', async (
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   assert.match(patch, /cachePath:\s*!!js dshHomePath\('cache', 'opencode-go-live\.json'\)/)
 })
+
+test('git 安装依赖的构建钩子是 prepack 而不是 prepare', async () => {
+  // pnpm 安装 git 依赖时只执行 `<pm> install` 与 prepublish/prepack/publish，
+  // 不会执行 prepare；钩子改回 prepare 会让 git 安装装出缺少 lib/ 的包，
+  // 而 `pnpm pack` 与本地 checkout 两条路径都读取 lib/。
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(manifest.scripts.prepack, 'pnpm run build')
+  assert.equal(manifest.scripts.prepare, undefined)
+})
