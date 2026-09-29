@@ -1,6 +1,6 @@
 {
   "name": "@skylerfee/dsh-llm-opencode-go-live",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "OpenCode Go 动态模型目录插件",
   "license": "MIT",
   "author": "SkylerFee",
@@ -61,7 +61,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "node --import tsx --test tests/*.spec.ts",
     "check": "pnpm run build && pnpm run test",
-    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run check"
   },
   "peerDependencies": {

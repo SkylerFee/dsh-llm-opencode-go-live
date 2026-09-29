@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.1.0-alpha.2](https://img.shields.io/badge/release-v0.1.0--alpha.2-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.1.0-alpha.3](https://img.shields.io/badge/release-v0.1.0--alpha.3-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
 
 An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, contributes its own Models settings card, and uses pi-ai for model requests. The built-in `opencode-go` route remains available.
 
@@ -11,8 +11,10 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1` — the image-input hooks it wires in ship in those versions. From the DSH repository root, install the bundle from a released tag:
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.3
 ```
+
+A git install fetches sources rather than built artifacts, and pnpm blocks a dependency's build scripts until the consumer allows them: the first attempt stops with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and prints the key to allow. Add that key to the Web profile's `pnpm-workspace.yaml`, run the command again, and confirm the installed package contains `lib/index.js` — the [usage guide](docs/usage.md#install-from-github) has the exact snippet.
 
 A local checkout or a `pnpm pack` tarball works too — see the [usage guide](docs/usage.md#prerequisites-and-installation) for both commands.
 

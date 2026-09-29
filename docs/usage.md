@@ -13,10 +13,23 @@ You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek
 From the DSH repository root, install a released tag:
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.2
+pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.3
 ```
 
-A git install fetches sources rather than built artifacts, so the package builds `lib/` through its `prepare` script during installation.
+A git install fetches sources rather than built artifacts, so the package builds `lib/` through its `prepack` hook during installation. Without that build the installed package has no `lib/index.js`, and the provider never loads. pnpm blocks a dependency's build scripts until the consumer allows them, so the first attempt stops with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and prints the key to allow. Add that key to the Web profile's `pnpm-workspace.yaml` — which already holds `packages`, `nodeLinker`, and `autoInstallPeers` — and run the same command again:
+
+```yaml
+allowBuilds:
+  "@skylerfee/dsh-llm-opencode-go-live": true
+```
+
+Then confirm the build ran, because an install whose build hook was blocked or skipped still reports success while shipping a package without `lib/`:
+
+```sh
+ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/index.js
+```
+
+The error message is the source of truth for the key: pnpm 10 accepts the bare package name shown above, while pnpm 11 prints the resolved `name@<git spec>` form for a hosted git dependency and does not clear the error for the bare name. The allowlist belongs to the consuming profile, so the `pnpm-workspace.yaml` in this repository — which lists the build scripts the plugin's own development tree needs — has no effect on an installed profile.
 
 ### Install from a local checkout or tarball
 
@@ -31,7 +44,7 @@ cd /absolute/path/to/deepseek-harness
 pnpm dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live
 ```
 
-A tarball from `pnpm pack` installs with `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.2.tgz`.
+A tarball from `pnpm pack` installs with `pnpm dsh plugin --profile web add ./skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.3.tgz`.
 
 Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_LIVE_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
 
@@ -72,6 +85,8 @@ The catalog fields belong to plugin config; the plugin's Models card edits the A
 | Symptom | Check and fix |
 | --- | --- |
 | The OpenCode Go (Live) provider is missing | Check that the plugin is installed in the current `web` profile, restart that profile, and look for plugin load errors in the startup log. |
+| A git install stops with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` | pnpm blocks the package's build hook until the profile allows it. Add the key from the error message to the Web profile's `pnpm-workspace.yaml` and re-run the install. |
+| The plugin installs but the provider never appears, and `lib/index.js` is missing from the installed package | The build hook did not run, so the package was installed without its entry point. Reinstall from a `pnpm pack` tarball or a built checkout, or install a git tag whose build hook is `prepack`. |
 | The provider is visible but has no live models | Check whether the DSH process can reach Models.dev; the first load has no snapshot and keeps an empty catalog, and a failed startup refresh writes a warning. |
 | `MISSING_CREDENTIAL` is returned | Save the API key in the plugin's Models card; confirm the running DSH uses the same profile and credential reference. Upgrading from a build whose default reference was `OPENCODE_GO_API_KEY` requires entering the key once more for this card. |
 | A model is selectable but API calls fail | Catalog loading and model calls are independent. Check DSH call errors and service logs, and use the error code to separate authentication, permission, rate-limit, and network problems; never paste keys into logs or tickets. |
