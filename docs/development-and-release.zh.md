@@ -24,7 +24,7 @@
    git push origin v0.1.0-alpha.5
    ```
 
-4. 在 [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) 中选择这个已有标签，创建 Pre-release，写明新增内容、修复内容和验证范围。当前没有自动发布工作流，也没有 registry 包；GitHub Release 的源码归档不是 `pnpm pack` 产物。
+4. 在 [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) 中选择这个已有标签，创建 Pre-release。发布说明必须同时提供中文和英文，两种语言都要覆盖相同的新增内容、修复内容、验证范围和未运行的检查。当前没有自动发布工作流，也没有 registry 包；GitHub Release 的源码归档不是 `pnpm pack` 产物。
 5. 检出新标签并按[使用指南](usage.zh.md#从源码安装)将已构建源码安装到 DSH Web profile，重启后确认 `lib/index.js` 存在、供应商与模型可见，并按改动范围做一次真实调用。记录该标签的验证结果。
 
 ## 修复已发布版本
