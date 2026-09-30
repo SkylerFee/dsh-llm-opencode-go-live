@@ -24,7 +24,7 @@ This repository currently delivers the plugin through GitHub `v*` tags and pre-r
    git push origin v0.1.0-alpha.5
    ```
 
-4. Select the existing tag in [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases), create a Pre-release, and describe additions, fixes, and verification. There is no automated release workflow or registry package today; a GitHub Release source archive is not a `pnpm pack` artifact.
+4. Select the existing tag in [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) and create a Pre-release. Write the release notes in both English and Chinese; each language must cover the same additions, fixes, verification scope, and checks not run. There is no automated release workflow or registry package today; a GitHub Release source archive is not a `pnpm pack` artifact.
 5. Check out the new tag and install its built source into a DSH Web profile using the [usage guide](usage.md#install-from-source). Restart the profile, confirm that `lib/index.js` exists and the provider and models appear, and make a real model call where the change warrants it. Record what was verified for that tag.
 
 ## Fix a released version
