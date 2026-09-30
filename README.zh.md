@@ -8,15 +8,19 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 
 ## 快速开始
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。从 DSH 仓库根目录安装已发布 tag 的 bundle：
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。克隆默认的 `main` 分支、完成构建，再将本地目录安装到 Web profile：
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.3
+git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git
+cd dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+PLUGIN_DIR="$PWD"
+cd /absolute/path/to/deepseek-harness
+pnpm dsh plugin --profile web add "$PLUGIN_DIR"
 ```
 
-git 安装拉取的是源码而非构建产物，而 pnpm 默认阻止依赖执行构建脚本：首次执行会以 `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` 停止，并打印需要放行的键。把该键加入 Web profile 的 `pnpm-workspace.yaml` 后重跑，并确认装出的包内存在 `lib/index.js`——具体片段见[使用指南](docs/usage.zh.md#从-github-安装)。
-
-本地 checkout 或 `pnpm pack` 产出的 tarball 也可以安装——两条命令见[使用指南](docs/usage.zh.md#准备与安装)。
+将 DSH 的绝对路径替换为实际位置，并保留插件源码目录：profile 会链接到该目录。[使用指南](docs/usage.zh.md#从源码安装)还说明了已有本地 checkout 和独立 tarball 的安装方法。
 
 重启 Web profile 后，打开 **Settings → Models**，在插件提供的 **OpenCode Go (Live)** 卡片点击“编辑”，填写 API Key 并应用，再从模型选择器选择 `opencode-go-live` 下的模型。密钥由 DSH 凭据服务保存，默认引用名为 `OPENCODE_GO_LIVE_API_KEY`，该名称刻意区别于 Models 页为内置 `opencode-go` 派生的 `OPENCODE_GO_API_KEY`，两条路由不会共用同一条凭据记录；bundle 默认将模型目录快照保存在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会切换默认模型。
 

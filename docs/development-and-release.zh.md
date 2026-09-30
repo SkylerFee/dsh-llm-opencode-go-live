@@ -13,7 +13,7 @@
 
 ## 准备并发布新版本
 
-1. 确定本次要发布的已合并改动，递增 `package.json` 的预发布版本。下一个版本可用 `0.1.0-alpha.4`。同步更新中英文 README 的版本徽章与安装命令、使用指南中的标签与 tarball 示例，并准备发布说明。单个改动可以在其 PR 中完成版本更新；多个改动一起发布时，用单独的发版 PR 完成。
+1. 确定本次要发布的已合并改动，递增 `package.json` 的预发布版本。下一个版本可用 `0.1.0-alpha.4`。同步更新中英文 README 的版本徽章、使用指南中的 tarball 示例，并准备发布说明。单个改动可以在其 PR 中完成版本更新；多个改动一起发布时，用单独的发版 PR 完成。
 2. 发版 PR 同样需要通过 `check`。在打标签前运行 `pnpm pack --dry-run`，并按改动范围从本地 checkout 或 tarball 安装到 DSH Web profile，验证插件加载、目录刷新、设置页及模型调用。离线 CI 不替代这些运行时检查；无法运行的项目应在发布说明中明确列出。
 3. 发版 PR 合并且 `main` 的 CI 通过后，确认本地 `main` 已更新到该提交，再创建并推送与 `package.json` 一致的新标签：
 
@@ -25,7 +25,7 @@
    ```
 
 4. 在 [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) 中选择这个已有标签，创建 Pre-release，写明新增内容、修复内容和验证范围。当前没有自动发布工作流，也没有 registry 包；GitHub Release 的源码归档不是 `pnpm pack` 产物。
-5. 从新标签按[使用指南](usage.zh.md#从-github-安装)安装到 DSH Web profile，重启后确认 `lib/index.js` 存在、供应商与模型可见，并按改动范围做一次真实调用。记录该标签的验证结果。
+5. 检出新标签并按[使用指南](usage.zh.md#从源码安装)将已构建源码安装到 DSH Web profile，重启后确认 `lib/index.js` 存在、供应商与模型可见，并按改动范围做一次真实调用。记录该标签的验证结果。
 
 ## 修复已发布版本
 

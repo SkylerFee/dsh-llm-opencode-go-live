@@ -8,15 +8,19 @@ An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `ope
 
 ## Quick Start
 
-Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1` — the image-input hooks it wires in ship in those versions. From the DSH repository root, install the bundle from a released tag:
+Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1` — the image-input hooks it wires in ship in those versions. Clone the default `main` branch, build it, and install the local directory into the Web profile:
 
 ```sh
-pnpm dsh plugin --profile web add github:SkylerFee/dsh-llm-opencode-go-live#v0.1.0-alpha.3
+git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git
+cd dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+PLUGIN_DIR="$PWD"
+cd /absolute/path/to/deepseek-harness
+pnpm dsh plugin --profile web add "$PLUGIN_DIR"
 ```
 
-A git install fetches sources rather than built artifacts, and pnpm blocks a dependency's build scripts until the consumer allows them: the first attempt stops with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and prints the key to allow. Add that key to the Web profile's `pnpm-workspace.yaml`, run the command again, and confirm the installed package contains `lib/index.js` — the [usage guide](docs/usage.md#install-from-github) has the exact snippet.
-
-A local checkout or a `pnpm pack` tarball works too — see the [usage guide](docs/usage.md#prerequisites-and-installation) for both commands.
+Replace the DSH path with its actual location and keep the plugin checkout in place: the profile links to it. The [usage guide](docs/usage.md#install-from-source) also covers an already-cloned checkout and a standalone tarball.
 
 Restart the Web profile. Open **Settings → Models**, click **Edit** in the plugin-owned **OpenCode Go (Live)** card, enter your API key, and apply it. Choose a model under `opencode-go-live` in the model picker. DSH stores the key through its credentials service under the default reference `OPENCODE_GO_LIVE_API_KEY`, which is deliberately distinct from the `OPENCODE_GO_API_KEY` that the Models page derives for the built-in `opencode-go` route, so the two routes never share one credential record. The bundle stores a catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model.
 
