@@ -13,15 +13,15 @@ This repository currently delivers the plugin through GitHub `v*` tags and pre-r
 
 ## Prepare and publish a version
 
-1. Select the merged changes for this release and increment the prerelease version in `package.json`. The next version can be `0.1.0-alpha.4`. Update the version badge in both READMEs, the tarball examples in both usage guides, and the release notes. A single change may carry the version update in its PR; use a separate release PR when grouping several changes.
+1. Select the merged changes for this release and increment the prerelease version in `package.json`. The next version can be `0.1.0-alpha.5`. Update the version badge in both READMEs, the tarball examples in both usage guides, and the release notes. A single change may carry the version update in its PR; use a separate release PR when grouping several changes.
 2. The release PR must also pass `check`. Before tagging, run `pnpm pack --dry-run` and install from the local checkout or tarball into a DSH Web profile to verify plugin loading, catalog refresh, the settings page, and model calls as applicable. Offline CI does not replace these runtime checks; list any checks that could not be run in the release notes.
 3. After the release PR merges and the `main` CI passes, update local `main` to that commit, then create and push a new tag that matches `package.json`:
 
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0-alpha.4 -m "v0.1.0-alpha.4"
-   git push origin v0.1.0-alpha.4
+   git tag -a v0.1.0-alpha.5 -m "v0.1.0-alpha.5"
+   git push origin v0.1.0-alpha.5
    ```
 
 4. Select the existing tag in [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases), create a Pre-release, and describe additions, fixes, and verification. There is no automated release workflow or registry package today; a GitHub Release source archive is not a `pnpm pack` artifact.

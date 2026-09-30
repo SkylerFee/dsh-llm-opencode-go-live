@@ -10,27 +10,26 @@ You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek
 
 ### Install from source
 
-Clone the default `main` branch into a directory you will keep. If you already have a checkout on `main`, use its path and skip the clone command. Build in the plugin directory, then install that directory from the DSH repository root:
+Run these commands from the DSH repository root. They clone the default `main` branch beside DSH, build it, and install that directory. If you already have a checkout on `main`, skip the clone command and use the checkout's path in the remaining commands:
 
 ```sh
-git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git
-cd dsh-llm-opencode-go-live
-pnpm install
-pnpm run check
-PLUGIN_DIR="$PWD"
-cd /absolute/path/to/deepseek-harness
-pnpm dsh plugin --profile web add "$PLUGIN_DIR"
+git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git ../dsh-llm-opencode-go-live
+pnpm --dir ../dsh-llm-opencode-go-live install
+pnpm --dir ../dsh-llm-opencode-go-live run check
+pnpm dsh plugin --profile web add ../dsh-llm-opencode-go-live
 ```
 
-Replace the DSH path with its actual location. The profile records a `link:` dependency on the plugin directory, so leave that directory in place. Confirm the built entry point is available through the profile:
+The profile records a `link:` dependency on the plugin directory, so leave that directory in place. Confirm the built entry point is available through the profile:
 
 ```sh
-ls "${DSH_HOME:-$HOME/.dsh}/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/index.js"
+ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/index.js
 ```
 
-For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.3.tgz` from the DSH repository root.
+If `DSH_HOME` is set, check `profiles/web/node_modules/` under that directory instead.
 
-Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_LIVE_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
+For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.4.tgz` from the DSH repository root.
+
+Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add ../dsh-llm-opencode-go-live` from the DSH repository root. Installation adds the package's `cordis.patch.yml` to the Web profile bundle layer, sets the default credential reference `OPENCODE_GO_LIVE_API_KEY`, and places the catalog snapshot at `cache/opencode-go-live.json` under the Harness home — `~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when that variable is set. Installation does not change the default model. Restart the Web profile after installing or updating the bundle; when running DSH from source, the main repository must already have build artifacts.
 
 ## Configure the key and use a model
 

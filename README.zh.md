@@ -2,25 +2,22 @@
 
 [English](README.md) | 中文
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.1.0-alpha.3](https://img.shields.io/badge/release-v0.1.0--alpha.3-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.1.0-alpha.4](https://img.shields.io/badge/release-v0.1.0--alpha.4-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
 
 DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev 更新 `opencode-go` 模型列表，注册独立的 `opencode-go-live` 路由，并由插件自己的浏览器入口在 Models 页显示供应商、密钥和动态模型；复用 pi-ai 处理模型请求；内置 `opencode-go` 路由不受影响。
 
 ## 快速开始
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。克隆默认的 `main` 分支、完成构建，再将本地目录安装到 Web profile：
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。在 DSH 仓库根目录执行以下命令，将默认的 `main` 分支克隆到 DSH 同级目录、构建并安装到 Web profile：
 
 ```sh
-git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git
-cd dsh-llm-opencode-go-live
-pnpm install
-pnpm run check
-PLUGIN_DIR="$PWD"
-cd /absolute/path/to/deepseek-harness
-pnpm dsh plugin --profile web add "$PLUGIN_DIR"
+git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git ../dsh-llm-opencode-go-live
+pnpm --dir ../dsh-llm-opencode-go-live install
+pnpm --dir ../dsh-llm-opencode-go-live run check
+pnpm dsh plugin --profile web add ../dsh-llm-opencode-go-live
 ```
 
-将 DSH 的绝对路径替换为实际位置，并保留插件源码目录：profile 会链接到该目录。[使用指南](docs/usage.zh.md#从源码安装)还说明了已有本地 checkout 和独立 tarball 的安装方法。
+保留插件源码目录：profile 会链接到该目录。[使用指南](docs/usage.zh.md#从源码安装)还说明了已有本地 checkout 和独立 tarball 的安装方法。
 
 重启 Web profile 后，打开 **Settings → Models**，在插件提供的 **OpenCode Go (Live)** 卡片点击“编辑”，填写 API Key 并应用，再从模型选择器选择 `opencode-go-live` 下的模型。密钥由 DSH 凭据服务保存，默认引用名为 `OPENCODE_GO_LIVE_API_KEY`，该名称刻意区别于 Models 页为内置 `opencode-go` 派生的 `OPENCODE_GO_API_KEY`，两条路由不会共用同一条凭据记录；bundle 默认将模型目录快照保存在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会切换默认模型。
 

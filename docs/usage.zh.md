@@ -10,27 +10,26 @@
 
 ### 从源码安装
 
-将默认的 `main` 分支克隆到准备长期保留的目录。已有处于 `main` 分支的源码 checkout 时，跳过克隆命令并使用其路径。在插件目录构建，再从 DSH 仓库根目录安装本地目录：
+在 DSH 仓库根目录执行以下命令，将默认的 `main` 分支克隆到 DSH 同级目录、构建并安装。已有处于 `main` 分支的源码 checkout 时，跳过克隆命令，并在后续命令中使用该目录的路径：
 
 ```sh
-git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git
-cd dsh-llm-opencode-go-live
-pnpm install
-pnpm run check
-PLUGIN_DIR="$PWD"
-cd /absolute/path/to/deepseek-harness
-pnpm dsh plugin --profile web add "$PLUGIN_DIR"
+git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git ../dsh-llm-opencode-go-live
+pnpm --dir ../dsh-llm-opencode-go-live install
+pnpm --dir ../dsh-llm-opencode-go-live run check
+pnpm dsh plugin --profile web add ../dsh-llm-opencode-go-live
 ```
 
-将 DSH 的绝对路径替换为实际位置。profile 会将插件记为指向源码目录的 `link:` 依赖，因此要保留该目录。随后确认 profile 能访问构建后的入口文件：
+profile 会将插件记为指向源码目录的 `link:` 依赖，因此要保留该目录。随后确认 profile 能访问构建后的入口文件：
 
 ```sh
-ls "${DSH_HOME:-$HOME/.dsh}/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/index.js"
+ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/index.js
 ```
 
-如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.3.tgz` 安装生成的 tarball。
+如果设置了 `DSH_HOME`，则在该目录下的 `profiles/web/node_modules/` 中检查。
 
-已安装 `dsh` CLI 的环境，也可将最后一行改为 `dsh plugin --profile web add /absolute/path/to/dsh-llm-opencode-go-live`。安装会把包内 `cordis.patch.yml` 加入 Web profile 的 bundle 层，设置默认凭据引用 `OPENCODE_GO_LIVE_API_KEY`，并将目录快照放在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会更改默认模型。安装或更新 bundle 后重启 Web profile；从源码运行 DSH 时，主仓库需要已有构建产物。
+如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.4.tgz` 安装生成的 tarball。
+
+已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。安装会把包内 `cordis.patch.yml` 加入 Web profile 的 bundle 层，设置默认凭据引用 `OPENCODE_GO_LIVE_API_KEY`，并将目录快照放在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会更改默认模型。安装或更新 bundle 后重启 Web profile；从源码运行 DSH 时，主仓库需要已有构建产物。
 
 ## 配置密钥并使用模型
 
