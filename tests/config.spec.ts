@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert'
+import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { Config } from '../src/config.js'
@@ -35,4 +36,31 @@ test('git 安装依赖的构建钩子是 prepack 而不是 prepare', async () =>
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(manifest.scripts.prepack, 'pnpm run build')
   assert.equal(manifest.scripts.prepare, undefined)
+})
+
+test('npm 发布确认允许元数据延迟，重试耗尽仍失败', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/publish.yml', import.meta.url), 'utf8')
+  const step = workflow.slice(workflow.indexOf('      - name: 确认 npm 版本可见'))
+  const script = step.split('        run: |\n')[1]
+  assert.ok(script, '必须运行工作流中的实际 shell 脚本')
+  // npm 和 sleep 使用 shell 函数替身，离线验证传播延迟且无需真实等待。
+  const mocks = `
+    calls=0
+    npm() {
+      calls=$((calls + 1))
+      echo "query:$*"
+      test "$calls" -gt "$FAILURES"
+    }
+    sleep() { echo "sleep:$*"; }
+  `
+  for (const [failures, queries, sleeps, status] of [[0, 1, 0, 0], [2, 3, 2, 0], [12, 12, 11, 1]]) {
+    const result = spawnSync('bash', ['-ec', mocks + script.replace(/^ {10}/gm, '')], {
+      encoding: 'utf8',
+      env: { ...process.env, FAILURES: String(failures), NPM_PACKAGE_VERSION: '0.1.0-alpha.5' },
+    })
+    assert.ifError(result.error)
+    assert.equal(result.status, status, result.stderr)
+    assert.equal(result.stdout.split('\n').filter(line => line === 'query:view @skylerfee/dsh-llm-opencode-go-live@0.1.0-alpha.5 version --registry=https://registry.npmjs.org').length, queries)
+    assert.equal(result.stdout.split('\n').filter(line => line === 'sleep:10').length, sleeps)
+  }
 })
