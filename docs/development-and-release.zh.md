@@ -39,19 +39,19 @@ npm publish --access public --tag alpha
 
 ## 准备并发布新版本
 
-1. 确定本次要发布的已合并改动，递增 `package.json` 的预发布版本。下一个版本可用 `0.1.0-alpha.5`。同步更新中英文 README 的版本徽章、使用指南中的 tarball 示例，并准备发布说明。单个改动可以在其 PR 中完成版本更新；多个改动一起发布时，用单独的发版 PR 完成。
+1. 确定本次要发布的已合并改动，递增 `package.json` 的预发布版本。下一个版本可用 `0.1.0-alpha.6`。同步更新中英文 README 的版本徽章、使用指南中的 tarball 示例，并准备发布说明。单个改动可以在其 PR 中完成版本更新；多个改动一起发布时，用单独的发版 PR 完成。
 2. 发版 PR 同样需要通过 `check`。在打标签前运行 `pnpm pack --dry-run`，并按改动范围从本地 checkout 或 tarball 安装到 DSH Web profile，验证插件加载、目录刷新、设置页及模型调用。离线 CI 不替代这些运行时检查；无法运行的项目应在发布说明中明确列出。
 3. 发版 PR 合并且 `main` 的 CI 通过后，确认本地 `main` 已更新到该提交，再创建并推送与 `package.json` 一致的新标签：
 
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0-alpha.5 -m "v0.1.0-alpha.5"
-   git push origin v0.1.0-alpha.5
+   git tag -a v0.1.0-alpha.6 -m "v0.1.0-alpha.6"
+   git push origin v0.1.0-alpha.6
    ```
 
-4. 在 [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) 中选择这个已有标签，创建 Pre-release；正式版本创建普通 Release。发布说明必须同时提供中文和英文，两种语言都要覆盖相同的新增内容、修复内容、验证范围和未运行的检查。发布 Release 会触发 `发布 npm 包` 工作流：它校验标签提交属于 `main`、标签等于 `v` 加包版本、Release 预发布状态与版本一致，再安装冻结依赖、构建测试、预检包内容并通过 OIDC 发布。预发布版本使用版本中的首个预发布标识作为 npm 标签（例如 `0.1.0-alpha.5` 使用 `alpha`），正式版本使用 `latest`。GitHub Release 的源码归档不是 npm 包。
-5. 在 [Actions](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions) 确认 `发布 npm 包` 成功，并查询新版本：`npm view @skylerfee/dsh-llm-opencode-go-live@0.1.0-alpha.5 version --registry=https://registry.npmjs.org`。按[使用指南](usage.zh.md#从-npm-安装)将已发布包安装到 DSH Web profile，重启后确认 `lib/index.js` 存在、供应商与模型可见，并按改动范围做一次真实调用。记录该版本的验证结果。首次本地发布的版本无需再次触发工作流；自动化从后续新版本开始。
+4. 在 [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) 中选择这个已有标签，创建 Pre-release；正式版本创建普通 Release。发布说明必须同时提供中文和英文，两种语言都要覆盖相同的新增内容、修复内容、验证范围和未运行的检查。发布 Release 会触发 `发布 npm 包` 工作流：它校验标签提交属于 `main`、标签等于 `v` 加包版本、Release 预发布状态与版本一致，再安装冻结依赖、构建测试、预检包内容并通过 OIDC 发布。预发布版本使用版本中的首个预发布标识作为 npm 标签（例如 `0.1.0-alpha.6` 使用 `alpha`），正式版本使用 `latest`。GitHub Release 的源码归档不是 npm 包。
+5. 在 [Actions](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions) 确认 `发布 npm 包` 成功，并查询新版本：`npm view @skylerfee/dsh-llm-opencode-go-live@0.1.0-alpha.6 version --registry=https://registry.npmjs.org`。按[使用指南](usage.zh.md#从-npm-安装)将已发布包安装到 DSH Web profile，重启后确认 `lib/index.js` 存在、供应商与模型可见，并按改动范围做一次真实调用。记录该版本的验证结果。首次本地发布的版本无需再次触发工作流；自动化从后续新版本开始。
 
 ## 修复已发布版本
 

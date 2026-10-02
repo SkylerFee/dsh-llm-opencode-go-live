@@ -39,19 +39,19 @@ The workflow uses a GitHub-hosted runner and OIDC, with no `NPM_TOKEN` secret. A
 
 ## Prepare and publish a version
 
-1. Select the merged changes for this release and increment the prerelease version in `package.json`. The next version can be `0.1.0-alpha.5`. Update the version badge in both READMEs, the tarball examples in both usage guides, and the release notes. A single change may carry the version update in its PR; use a separate release PR when grouping several changes.
+1. Select the merged changes for this release and increment the prerelease version in `package.json`. The next version can be `0.1.0-alpha.6`. Update the version badge in both READMEs, the tarball examples in both usage guides, and the release notes. A single change may carry the version update in its PR; use a separate release PR when grouping several changes.
 2. The release PR must also pass `check`. Before tagging, run `pnpm pack --dry-run` and install from the local checkout or tarball into a DSH Web profile to verify plugin loading, catalog refresh, the settings page, and model calls as applicable. Offline CI does not replace these runtime checks; list any checks that could not be run in the release notes.
 3. After the release PR merges and the `main` CI passes, update local `main` to that commit, then create and push a new tag that matches `package.json`:
 
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0-alpha.5 -m "v0.1.0-alpha.5"
-   git push origin v0.1.0-alpha.5
+   git tag -a v0.1.0-alpha.6 -m "v0.1.0-alpha.6"
+   git push origin v0.1.0-alpha.6
    ```
 
-4. Select the existing tag in [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) and create a Pre-release, or a regular Release for a stable version. Write the release notes in both English and Chinese; each language must cover the same additions, fixes, verification scope, and checks not run. Publishing the Release triggers the `发布 npm 包` workflow: it checks that the tag commit belongs to `main`, that the tag equals `v` followed by the package version, and that the Release prerelease status agrees with the version, then installs frozen dependencies, builds and tests, inspects the package, and publishes using OIDC. A prerelease uses its first prerelease identifier as the npm tag (`0.1.0-alpha.5` uses `alpha`); a stable version uses `latest`. A GitHub Release source archive is not the npm package.
-5. Confirm that `发布 npm 包` succeeded in [Actions](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions) and query the new version with `npm view @skylerfee/dsh-llm-opencode-go-live@0.1.0-alpha.5 version --registry=https://registry.npmjs.org`. Install the published package into a DSH Web profile using the [usage guide](usage.md#install-from-npm). Restart the profile, confirm that `lib/index.js` exists and the provider and models appear, and make a real model call where the change warrants it. Record what was verified for that version. The version first published locally does not need another workflow run; automation starts with later versions.
+4. Select the existing tag in [GitHub Releases](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) and create a Pre-release, or a regular Release for a stable version. Write the release notes in both English and Chinese; each language must cover the same additions, fixes, verification scope, and checks not run. Publishing the Release triggers the `发布 npm 包` workflow: it checks that the tag commit belongs to `main`, that the tag equals `v` followed by the package version, and that the Release prerelease status agrees with the version, then installs frozen dependencies, builds and tests, inspects the package, and publishes using OIDC. A prerelease uses its first prerelease identifier as the npm tag (`0.1.0-alpha.6` uses `alpha`); a stable version uses `latest`. A GitHub Release source archive is not the npm package.
+5. Confirm that `发布 npm 包` succeeded in [Actions](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions) and query the new version with `npm view @skylerfee/dsh-llm-opencode-go-live@0.1.0-alpha.6 version --registry=https://registry.npmjs.org`. Install the published package into a DSH Web profile using the [usage guide](usage.md#install-from-npm). Restart the profile, confirm that `lib/index.js` exists and the provider and models appear, and make a real model call where the change warrants it. Record what was verified for that version. The version first published locally does not need another workflow run; automation starts with later versions.
 
 ## Fix a released version
 
