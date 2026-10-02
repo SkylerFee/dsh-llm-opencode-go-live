@@ -68,4 +68,14 @@ jobs:
       - name: 确认 npm 版本可见
         env:
           NPM_PACKAGE_VERSION: ${{ steps.release.outputs.version }}
-        run: npm view "@skylerfee/dsh-llm-opencode-go-live@$NPM_PACKAGE_VERSION" version --registry=https://registry.npmjs.org
+        run: |
+          for attempt in {1..12}; do
+            if npm view "@skylerfee/dsh-llm-opencode-go-live@$NPM_PACKAGE_VERSION" version --registry=https://registry.npmjs.org; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then
+              echo "npm 版本尚未可见，第 $attempt/12 次查询；10 秒后重试"
+              sleep 10
+            fi
+          done
+          exit 1
