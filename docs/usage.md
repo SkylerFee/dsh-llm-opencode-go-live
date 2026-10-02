@@ -6,7 +6,17 @@ This guide targets a DeepSeek Harness installation whose Web profile already sta
 
 ## Prerequisites and installation
 
-You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1` as peers — an older Harness fails peer resolution at install time. The DSH Web profile must start correctly. The package is not published to a registry; install a built source checkout or a tarball made from it.
+You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1` as peers. The host must also provide `@earendil-works/pi-ai` `^0.87.1`; DSH resolves this peer to the host's pi-ai at runtime, including linked source installs. The plugin's pi-ai `0.87.1` development dependency supplies its standalone build and tests. The DSH Web profile must start correctly.
+
+### Install from npm
+
+After the maintainer [initializes npm](development-and-release.md#initialize-npm-once) and publishes the package, install the `alpha` tag from the DSH repository root:
+
+```sh
+pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live@alpha
+```
+
+Then restart the Web profile. Use `@latest` for a stable release or a version such as `@0.1.0-alpha.5` to pin one version. Until the first npm publish, use a source checkout or tarball below.
 
 ### Install from source
 

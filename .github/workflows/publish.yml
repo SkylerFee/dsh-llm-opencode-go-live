@@ -1,0 +1,71 @@
+name: 发布 npm 包
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: 检出发布标签
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+      - name: 安装 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # npm 11.5.1 起支持 Trusted Publishing；固定经过核对的 CLI 版本。
+      - name: 安装 npm 发布工具
+        run: npm install --global npm@11.21.0
+      - name: 校验发布标签和 npm 标签
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { appendFileSync, readFileSync } from 'node:fs'
+
+          const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
+          assert.equal(process.env.RELEASE_TAG, `v${version}`, '发布标签必须与 package.json 版本一致')
+          const prerelease = version.includes('-')
+          assert.equal(process.env.RELEASE_PRERELEASE, String(prerelease), 'GitHub Release 的预发布状态必须与包版本一致')
+          const distTag = prerelease ? version.split('-')[1].split('.')[0] : 'latest'
+          appendFileSync(process.env.GITHUB_OUTPUT, `dist_tag=${distTag}\nversion=${version}\n`)
+          console.log(`发布 ${version}，npm 标签 ${distTag}`)
+          NODE
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 构建并运行离线测试
+        run: pnpm run check
+      - name: 预检 npm 包内容
+        run: npm pack --dry-run --ignore-scripts
+      # 构建和测试已完成；跳过发布钩子，避免重复执行同一组检查。
+      - name: 通过 OIDC 发布
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: npm publish --ignore-scripts --tag "$NPM_DIST_TAG"
+      - name: 确认 npm 版本可见
+        env:
+          NPM_PACKAGE_VERSION: ${{ steps.release.outputs.version }}
+        run: npm view "@skylerfee/dsh-llm-opencode-go-live@$NPM_PACKAGE_VERSION" version --registry=https://registry.npmjs.org

@@ -52,7 +52,7 @@ function policyFromModel(model: Model<Api>): OpenCodeGoPolicy | undefined {
 }
 
 /**
- * 以当前锁定的 pi-ai OpenCode Go 模型补充已知特殊协议策略。
+ * 以当前使用的 pi-ai OpenCode Go 模型补充已知特殊协议策略。
  * 来源目录决定成员资格；没有特殊策略的新模型使用通用 Completions 策略。
  */
 export const OPEN_CODE_GO_POLICIES: Readonly<Record<string, OpenCodeGoPolicy>> = Object.freeze(
