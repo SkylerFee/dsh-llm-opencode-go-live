@@ -10,17 +10,25 @@
 
 ### 从 npm 安装
 
-维护者完成[npm 首次初始化](development-and-release.zh.md#npm-首次初始化)并发布包后，可在 DSH 仓库根目录安装 `alpha` 标签：
+推荐从 npm 安装。使用已安装的 `dsh` CLI，将已发布的包加入 Web profile：
 
 ```sh
-pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live@alpha
+dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-随后重启 Web profile。安装正式版本时使用 `@latest`，固定版本时使用例如 `@0.1.0-alpha.5`。包尚未首次发布时，使用下方源码或 tarball 安装。
+不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.1.0-alpha.5`。安装后重启 Web profile。
+
+从源码运行 DSH 时，在 DSH 仓库根目录执行：
+
+```sh
+pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
+```
+
+安装会把包内 `cordis.patch.yml` 加入 Web profile 的 bundle 层，设置默认凭据引用 `OPENCODE_GO_LIVE_API_KEY`，并将目录快照放在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会更改默认模型。安装或更新 bundle 后重启 Web profile；从源码运行 DSH 时，主仓库需要已有构建产物。
 
 ### 从源码安装
 
-在 DSH 仓库根目录执行以下命令，将默认的 `main` 分支克隆到 DSH 同级目录、构建并安装。已有处于 `main` 分支的源码 checkout 时，跳过克隆命令，并在后续命令中使用该目录的路径：
+开发或调试插件时，在 DSH 仓库根目录执行以下命令，将默认的 `main` 分支克隆到 DSH 同级目录、构建并安装。已有处于 `main` 分支的源码 checkout 时，跳过克隆命令，并在后续命令中使用该目录的路径：
 
 ```sh
 git clone https://github.com/SkylerFee/dsh-llm-opencode-go-live.git ../dsh-llm-opencode-go-live
@@ -39,7 +47,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.1.0-alpha.5.tgz` 安装生成的 tarball。
 
-已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。安装会把包内 `cordis.patch.yml` 加入 Web profile 的 bundle 层，设置默认凭据引用 `OPENCODE_GO_LIVE_API_KEY`，并将目录快照放在 Harness home 的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下）。安装不会更改默认模型。安装或更新 bundle 后重启 Web profile；从源码运行 DSH 时，主仓库需要已有构建产物。
+已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 
 ## 配置密钥并使用模型
 
