@@ -10,11 +10,17 @@ export interface Config {
   apiKeyEnv: Volatile<string>
   /** 目录刷新策略。 */
   catalog?: CatalogConfig
+  /**
+   * 是否在 Web 客户端渲染余额悬浮面板。
+   * 仅客户端消费：Host 运行时不读取该值，只把它作为 volatile 字段暴露给供应商卡片编辑。
+   */
+  showBalanceOverlay?: Volatile<boolean>
 }
 
 /**
  * 暴露凭据引用供供应商页面编辑，目录参数仍由插件配置管理。
  * 默认引用名取自 live 路由，避免与 Models 页为内置 `opencode-go` 派生的 `OPENCODE_GO_API_KEY` 撞名。
+ * `showBalanceOverlay` 保持顶层 volatile 字段：嵌套对象的 volatile 投影未经验证，顶层与 `apiKeyEnv` 同构。
  */
 export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('OPENCODE_GO_LIVE_API_KEY').volatile(),
@@ -24,6 +30,7 @@ export const Config = z.object({
     refreshIntervalMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
     refreshTimeoutMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
   }),
+  showBalanceOverlay: z.boolean().default(true).volatile(),
 })
 
 /** 目录刷新配置。 */
@@ -51,6 +58,8 @@ export interface ResolvedConfig {
     refreshIntervalMs: number
     refreshTimeoutMs: number
   }
+  /** 余额悬浮面板的展示意图；客户端读取，Host 不消费。 */
+  showBalanceOverlay: boolean
 }
 
 const DEFAULTS: ResolvedConfig['catalog'] = {
@@ -58,6 +67,8 @@ const DEFAULTS: ResolvedConfig['catalog'] = {
   refreshIntervalMs: 21_600_000,
   refreshTimeoutMs: 10_000,
 }
+
+const DEFAULT_SHOW_BALANCE_OVERLAY = true
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -88,6 +99,12 @@ export function resolveConfig(input: unknown): ResolvedConfig {
   if (typeof refreshOnStart !== 'boolean') {
     throw new TypeError('llm-opencode-go-live: catalog.refreshOnStart must be boolean')
   }
+  const showBalanceOverlay = input.showBalanceOverlay === undefined
+    ? DEFAULT_SHOW_BALANCE_OVERLAY
+    : input.showBalanceOverlay
+  if (typeof showBalanceOverlay !== 'boolean') {
+    throw new TypeError('llm-opencode-go-live: showBalanceOverlay must be boolean')
+  }
   const resolved: ResolvedConfig = {
     apiKeyEnv,
     catalog: {
@@ -100,9 +117,11 @@ export function resolveConfig(input: unknown): ResolvedConfig {
         ? DEFAULTS.refreshTimeoutMs
         : nonNegativeSafeInteger(catalog.refreshTimeoutMs, 'catalog.refreshTimeoutMs'),
     },
+    showBalanceOverlay,
   }
   return Object.freeze({
     apiKeyEnv: resolved.apiKeyEnv,
     catalog: Object.freeze(resolved.catalog),
+    showBalanceOverlay,
   })
 }

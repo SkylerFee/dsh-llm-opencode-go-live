@@ -49,6 +49,10 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 
+同样的安装与启用流程也可以在 Web 客户端的插件页完成：
+
+![在 Web 客户端的插件页安装并启用插件](img/install-plugin.gif)
+
 ## 配置密钥并使用模型
 
 1. 启动 Web profile，打开 **Settings → Models**，找到由插件提供的 **OpenCode Go (Live)** 卡片。
@@ -56,6 +60,48 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 3. 等待动态目录加载，展开卡片的模型列表，或在模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
 
 模型目录来自 Models.dev，获取目录不需要 API Key；真正请求 OpenCode Go API 时才会解析密钥。选择模型后若仍无法调用，请按下方[排查](#排查)先区分凭据错误与上游响应。
+
+![在 OpenCode Go (Live) 卡片中保存密钥并在模型选择器中选择 live 模型](img/add-key.gif)
+
+## 用量悬浮窗
+
+卡片中的**显示用量悬浮窗**开关控制右下角的用量控件。该开关写入插件配置 `showBalanceOverlay`，**未配置时的默认值是开启**，因此新装即显示，重启 profile 后保持。若宿主读取不到该字段（例如尚未写入过配置），同样按开启处理。
+
+徽章移入展开为完整面板、移出自动收起的过程：
+
+![用量悬浮窗徽章展开为完整面板](img/usage-view.gif)
+
+**默认形态是徽章**：只占右下角一小块，显示 5 小时窗口的进度条与用量百分比，并带一个固定按钮：
+
+| 操作 | 行为 |
+| --- | --- |
+| 鼠标移入徽章 | 展开完整面板（三个计费窗口 + 更新时间）。 |
+| 鼠标移出 | 自动收起为徽章，无需按钮。 |
+| 拖动徽章或面板（未固定时） | 移动位置；面板内除按钮以外的区域都可拖。拖动结束后的点击不会被当成展开。 |
+| 点击徽章主体 | 在不支持悬浮的设备上展开面板。 |
+| 点击固定按钮 | 锁定／解除锁定当前位置。图标为矢量图钉：**实心=已固定，空心=未固定**，**默认不固定**。固定后徽章与面板都不能再拖动。 |
+
+完整面板展示 OpenCode Go 订阅在三个计费窗口中的用量：
+
+| 窗口 | 含义 |
+| --- | --- |
+| 5 小时 | 滚动窗口，额度为月额度的 20%。 |
+| 本周 | 周窗口，额度为月额度的 50%。 |
+| 本月 | 月窗口，额度为 100%；用尽即进入 `rate-limited`。 |
+
+每行显示百分比、进度条与重置倒计时；进度条在接近上限时转为琥珀色，进入 `rate-limited` 后转为错误色。面板标题栏的按钮为：
+
+| 按钮 | 行为 |
+| --- | --- |
+| 图钉 | 固定／解除固定位置，与徽章上的按钮是同一个状态。 |
+| ⟳ 刷新 | 立即重新查询（10 秒节流）。 |
+| × 关闭 | 把插件配置的 `showBalanceOverlay` 写成 `false`，**模型页卡片里的开关同步关闭**；要重新显示，请在卡片中重新打开开关。 |
+
+面板没有最小化按钮：鼠标移开就会自动收起为徽章。位置与固定状态属于浏览器本地界面偏好（`localStorage`），不写入插件配置；是否展示由插件配置决定。
+
+数据由宿主的余额路由 `GET /api/opencode-go-live/balance` 获取：宿主用 `apiKeyEnv` 引用的凭据向 `https://opencode.ai/zen/go/v1/usage` 发起请求，只把归一化的用量结果交给浏览器，API Key 不会离开宿主进程。该端点未出现在 OpenCode 公开文档中，属于上游实现约定；若上游调整端点，用量面板会显示查询失败而不是影响模型调用。
+
+面板在挂载时查询一次，之后每 5 分钟自动刷新，也可以点刷新按钮手动查询（10 秒内不会重复发起）。密钥更新后会自动重新查询。
 
 ## 配置参考
 
@@ -69,6 +115,7 @@ llm-opencode-go-live:
     refreshOnStart: true
     refreshIntervalMs: 21600000
     refreshTimeoutMs: 10000
+  showBalanceOverlay: true
 ```
 
 | 字段 | 默认值 | 作用 |
@@ -78,8 +125,9 @@ llm-opencode-go-live:
 | `catalog.refreshOnStart` | `true` | 启动时从 Models.dev 刷新目录。 |
 | `catalog.refreshIntervalMs` | `21600000` | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。 |
 | `catalog.refreshTimeoutMs` | `10000` | 单次目录请求超时，单位毫秒；`0` 禁用超时。 |
+| `showBalanceOverlay` | `true` | 是否显示用量悬浮窗；由 Models 卡片内的开关读写，Host 运行时不读取该值。 |
 
-目录字段由插件配置管理，插件的 Models 卡片仅编辑 API Key。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
+目录字段由插件配置管理，插件的 Models 卡片仅编辑 API Key 与用量悬浮窗开关。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
 
 ## 排查
 
@@ -91,9 +139,16 @@ llm-opencode-go-live:
 | 返回 `MISSING_CREDENTIAL` | 在插件的 Models 卡片保存 API Key；确认运行中的 DSH 使用同一 profile 和凭据引用。若从默认引用为 `OPENCODE_GO_API_KEY` 的旧版本升级，需要为本卡片重新填写一次密钥。 |
 | 模型可选但 API 调用失败 | 目录加载与模型调用相互独立。查看 DSH 的调用错误和服务日志，按错误码区分认证、权限、限流和网络问题；不要在日志或工单中粘贴密钥。 |
 | 刷新后仍显示旧模型 | 查看刷新警告；来源失败、全无效或快照保存失败时，插件保留上次成功目录。 |
+| 开关已打开但看不到悬浮窗 | 悬浮窗挂在浏览器帧的浮层上，请确认当前页面是 Web 客户端而不是终端会话；若是点过面板的 × 关闭，模型页开关会同步变成关闭，重新打开该开关即可。 |
+| 只看到右下角一个小徽章 | 这是默认形态：徽章显示 5 小时窗口的进度条与用量百分比，鼠标移入即展开完整面板，移出自动收起。 |
+| 悬浮窗拖不动 | 处于固定位置状态，点击图钉按钮（实心即已固定）解除后即可拖动；徽章与面板都可拖动。 |
+| 悬浮窗位置或固定状态不对 | 二者保存在浏览器 `localStorage`（键名 `opencode-go-live.overlay.*`），清除这些键即可恢复默认（右下角、不固定）。 |
+| 悬浮窗显示“API 密钥缺失” | 卡片尚未保存密钥，或当前 profile 使用的是另一个凭据引用；在卡片中重新填写并应用。 |
+| 悬浮窗显示“没有 OpenCode Go 订阅” | 上游返回 403，表示该密钥所在账号没有 Go 订阅（Zen 预付余额也不在此面板范围内）。 |
+| 悬浮窗显示“查询失败” | 宿主无法访问 `https://opencode.ai/zen/go/v1/usage`，或该端点已随上游调整；模型调用不受影响，可按上方端点说明核对。 |
 
 `opencode-go-live` 不会自动回退到内置 `opencode-go`。需要回退时，在模型选择器或默认模型设置中显式选择内置路由。
 
 ## 开发验证
 
-在插件目录运行 `pnpm run check` 执行 TypeScript 构建与离线测试；发布前运行 `pnpm pack --dry-run` 检查包内容。测试使用固定目录替身，不访问真实模型 API。目录与调用链路的实现说明见[架构文档](opencode-go-live-dynamic-catalog-design.zh.md)。
+在插件目录运行 `pnpm run check` 执行 TypeScript 构建与离线测试；发布前运行 `pnpm pack --dry-run` 检查包内容。测试使用固定目录替身与固定用量替身，不访问真实模型 API 或用量端点。目录与调用链路的实现说明见[架构文档](opencode-go-live-dynamic-catalog-design.zh.md)，用量悬浮窗的数据源与路由契约见[用量悬浮窗设计](opencode-go-live-balance-overlay-design.zh.md)。
