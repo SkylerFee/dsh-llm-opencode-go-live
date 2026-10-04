@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.1.0-alpha.5](https://img.shields.io/badge/release-v0.1.0--alpha.5-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases)
 
 DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev 更新 `opencode-go` 模型列表，注册独立的 `opencode-go-live` 路由，并由插件自己的浏览器入口在 Models 页显示供应商、密钥和动态模型；复用 pi-ai 处理模型请求；内置 `opencode-go` 路由不受影响。供应商卡片内的开关可以在帧级悬浮层显示 OpenCode Go 订阅用量。
 
@@ -16,7 +16,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-该命令安装 npm 的 `latest` 标签。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.1.0-alpha.5`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
+该命令安装 npm 的 `latest` 标签。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.0`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
 
 在 Web 客户端的插件页安装并启用插件：
 
