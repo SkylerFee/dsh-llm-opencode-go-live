@@ -16,7 +16,7 @@
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.0`。安装后重启 Web profile。
+不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.1`。安装后重启 Web profile。
 
 从源码运行 DSH 时，在 DSH 仓库根目录执行：
 
@@ -45,7 +45,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 如果设置了 `DSH_HOME`，则在该目录下的 `profiles/web/node_modules/` 中检查。
 
-如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.0.tgz` 安装生成的 tarball。
+如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.1.tgz` 安装生成的 tarball。
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 

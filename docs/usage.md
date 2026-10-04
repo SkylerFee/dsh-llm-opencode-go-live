@@ -16,7 +16,7 @@ Installing from npm is recommended. Use the installed `dsh` CLI to add the publi
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-Without a version or tag, this installs `latest`. Append `@alpha` to follow prereleases, or `@0.2.0` to pin this release. Then restart the Web profile.
+Without a version or tag, this installs `latest`. Append `@alpha` to follow prereleases, or `@0.2.1` to pin this release. Then restart the Web profile.
 
 When running DSH from source, use this command from the DSH repository root:
 
@@ -45,7 +45,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 If `DSH_HOME` is set, check `profiles/web/node_modules/` under that directory instead.
 
-For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.0.tgz` from the DSH repository root.
+For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.1.tgz` from the DSH repository root.
 
 Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add ../dsh-llm-opencode-go-live` from the DSH repository root.
 
