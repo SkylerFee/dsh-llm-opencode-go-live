@@ -197,6 +197,15 @@ export const Config = z.object({
 ```js
 const BALANCE_ROUTE = '/api/opencode-go-live/balance' // keep in sync with BALANCE_ROUTE_PATH in src/index.ts
 const OVERLAY_POS_KEY = 'opencode-go-live.overlay.pos'
+const OVERLAY_PINNED_KEY = 'opencode-go-live.overlay.pinned'      // pinned position
+const OVERLAY_EXPANDED_KEY = 'opencode-go-live.overlay.expanded'  // kept expanded
+const OVERLAY_SIZE_KEY = 'opencode-go-live.overlay.size'          // { width, height }
+const OVERLAY_DEFAULT_WIDTH = 264   // panel width before any resize; height follows content
+const OVERLAY_MIN_WIDTH = 200, OVERLAY_MIN_HEIGHT = 120   // minimum size
+const OVERLAY_MAX_WIDTH = 480, OVERLAY_MAX_HEIGHT = 520   // maximum size (then clamped to the viewport)
+const OVERLAY_VIEWPORT_MARGIN = 24  // margin the size cap keeps against the viewport
+const OVERLAY_RESIZE_STEP = 16      // keyboard resize step
+const WINDOW_DRAG_RECALL_ATTR = 'data-window-drag-recall' // host window-drag recall mark (parallel definition)
 const OVERLAY_REFRESH_MS = 300_000   // 5-minute auto refresh
 const MANUAL_REFRESH_THROTTLE_MS = 10_000
 ```
@@ -213,6 +222,9 @@ const MANUAL_REFRESH_THROTTLE_MS = 10_000
 | `refresh` | 刷新 | Refresh |
 | `closeOverlay` | 关闭用量面板 | Close usage panel |
 | `showOverlay` | 显示用量悬浮窗 | Show usage overlay |
+| `pinOverlay` / `unpinOverlay` | 固定位置 / 解除固定 | Pin position / Unpin position |
+| `pinExpandOverlay` / `unpinExpandOverlay` | 固定展开 / 取消固定展开 | Keep expanded / Stop keeping expanded |
+| `resizeOverlay` | 调整面板大小 | Resize panel |
 | `updatedAtPrefix` | 更新于 | Updated |
 | `hourUnit` | 小时 | h |
 | `minuteUnit` | 分 | m |
@@ -252,18 +264,26 @@ ctx.slots.inject('shell.overlay', () => ctx.slots.register({
 
 - **Toggle interaction**: the component reads the toggle view on its own (chosen over sharing card state: the overlay independently subscribes to `settings/document-updated` and calls `settings.describe()` itself, decoupled from card state; while the toggle is off it `return null` and the slot registration stays).
 - **Layout** (host theme tokens throughout, light/dark adaptive):
-  - `position: absolute`, default bottom-right (`right/bottom: 16px`), 264px wide; the host `shell.overlay` container is itself `position:absolute; inset:0; pointer-events:none`, and its direct children automatically get `pointer-events:auto`, so the panel follows the frame layout without extra pointer-event declarations;
-  - title row: title + pin button + minimize button + refresh button + close button (each button must `stopPropagation` on `pointerdown`, otherwise it bubbles into a drag);
+  - `position: absolute`, default bottom-right (`right/bottom: 16px`), 264px wide (`box-sizing: border-box`, the same coordinate space as `getBoundingClientRect`); the host `shell.overlay` container is itself `position:absolute; inset:0; pointer-events:none`, and its direct children automatically get `pointer-events:auto`, so the panel follows the frame layout without extra pointer-event declarations;
+  - title row: title + keep-expanded button + pin button + refresh button + close button (each button must `stopPropagation` on `pointerdown`, otherwise it bubbles into a drag);
   - three window rows: window name + progress bar (4px tall, rounded) + `${percent}%` + countdown;
-  - footer: `updatedAtPrefix` + relative time.
+  - footer: `updatedAtPrefix` + relative time;
+  - bottom-right: the resize handle (16px hit area, `cursor: nwse-resize`), present only in the expanded form.
 - **State colors**: `status === 'rate-limited'` → `--dsw-alias-state-error-primary`; `percent ≥ 80` → `--dsw-static-amber-500`; otherwise `--dsw-alias-state-success-primary`. The host Theme's `listTokens` output was checked: there is **no** `--dsw-alias-state-warning-*`, so the warning tier uses the static amber palette.
 - **Nothing renders before the toggle is known**: the switch starts at `null` (unknown). Only a read `true` renders and queries, which avoids flashing the panel while the toggle is off and avoids a wasted upstream request.
 - **Close writes the switch**: the close button writes the plugin's `showBalanceOverlay` to `false` instead of hiding locally. The card switch and the overlay close share one `writeOverlayEnabled` entry point that re-reads the revision before every write, so neither entry marks the other's write stale (`settings-conflict`); after a successful write the host's `settings/document-updated` broadcast turns the card switch off in step. The panel keeps no independent close state, so there is no "switch on but panel hidden" fork.
 - **Pinned position**: one button in the title bar and on the chip toggles pinning. The icon is an inline vector pin (round head plus stem): **pinned renders filled (`fill: currentColor` in the brand color), unpinned hollow (`fill: none` in the secondary color)**, with `aria-pressed` in step; **the default is unpinned** (no `localStorage` key means unpinned). While pinned `startDrag` returns immediately, the position stays put, and the state is written to `localStorage` to survive a reload. A vector icon rather than an emoji keeps the filled/hollow distinction in the current color, lets it follow the theme, and makes it assertable in tests.
-- **The chip is the default form; hover expands it**: there is no persisted minimized state and no minimize button — the default render is the chip (5-hour bar and usage percent plus the pin button), entering the anchor expands the full panel, and leaving it collapses back. The bar and percent both take the used value, rounded and clamped to 0–100, colored by `barColor`; a placeholder appears while there is no data and a warning glyph on failure. The chip body is its own button (so devices without hover can expand) sibling to the pin button, which avoids nesting a button inside another; queries and auto-refresh keep running while collapsed.
+- **The chip is the default form; hover expands it**: there is no persisted minimized state and no minimize button — the default render is the chip (5-hour bar and usage percent plus a keep-expanded button and a pin button), entering the anchor expands the full panel, and leaving it collapses back. The bar and percent both take the used value, rounded and clamped to 0–100, colored by `barColor`; a placeholder appears while there is no data and a warning glyph on failure. The chip body is its own button (so devices without hover can expand) sibling to the two pin buttons, which avoids nesting a button inside another; queries and auto-refresh keep running while collapsed.
 - **The anchor stays mounted**: the `div` carrying the hover handlers and the chip-wide drag stays mounted while the chip or the panel is its inner content. Binding the handlers to an element that unmounts on content switch would fire `mouseleave` at the moment of expansion and produce an expand/collapse flicker loop.
 - **Interface preferences vs config**: position and pinning are browser-local interface preferences (`localStorage`); whether the control is shown is decided by the `showBalanceOverlay` plugin config. The two never share one store.
 - **Dragging**: `onPointerDown` is bound **only on the anchor**; events from the chip and from the panel (title bar and content) all bubble to it, so `event.currentTarget` is always the anchor. That is a correctness requirement: the position math needs the anchor as its reference because the anchor is the `position: absolute` element, so only its `offsetParent` is the frame; taking the panel element instead resolves the panel's `offsetParent` to the anchor itself, clamping the travel range to 0 and making the control look undraggable. `pointermove` updates the position and release clamps to the viewport and writes `localStorage[OVERLAY_POS_KEY]` (`{ x, y }`). Because the whole chip is draggable while containing buttons, a drag that actually moved records a timestamp and clicks within `DRAG_CLICK_SUPPRESS_MS` (250ms) are ignored, so moving the control is never mistaken for clicking to expand. The position is read on mount and falls back to the default corner when out of bounds (after a viewport change).
+- **Subtracting the anchor from the window drag geometry, with two layers of cover**:
+  1. **The primary guarantee is the host's own rule**: the anchor carries `tabIndex: -1`, which makes it match the host's `base.css` interactive-element selector `html[data-platform=darwin] :is(button, a, input, …, [contenteditable='true'], [tabindex], [role='dialog'], …) { -webkit-app-region: no-drag }` (an attribute selector ignores the value, so `-1` also keeps it out of the tab order and adds no extra focus stop). That rule is maintained and verified with the host, and its presence in the installed app was confirmed in `app.asar` (`…,[contenteditable=true],[tabindex],…){-webkit-app-region:no-drag}`).
+  2. **An inline declaration as the fallback**: the anchor declares both spellings, `WebkitAppRegion: 'no-drag'` and `webkitAppRegion: 'no-drag'`. Only one is used deliberately: Blink's CSSOM aliases expose only the lowercase-w `webkitAppRegion` (string-checking the installed Electron Framework binary shows lowercase `webkitTransform`/`webkitAppearance`/`webkitUserSelect` and zero capital-`Webkit*` forms), while the historical WebKit spelling is the capital W; writing both means the result never depends on one engine's alias table.
+  The anchor is the overlay's outermost positioned element and its box covers both chip and panel; the `shell.overlay` layer renders after every column, so the subtracted box is later in document order than any `data-window-drag` row and overrides all of them.
+- **Drag-region recall pulse**: `no-drag` changes the computed app-region value only once, at mount, and Electron re-collects drag rects only when that value changes (electron#32341), so after expanding, moving, resizing, or a data row count change the stale geometry can still hit a window drag row. Whenever any of `[expanded, pos, size, envelope]` changes the component calls `pulseWindowDragRecall()`: only when `document.documentElement.dataset.platform === 'darwin'`, it sets `data-window-drag-recall` on `document.body` and removes it on the next frame — set then clear is two computed-value changes, the same mechanism as the host's `window-drag/recall.ts` (whose comment already treats "a mounted overlay's own app-region value" as a change of its own). A different platform, a missing `document`, or a pulse that has not yet been cleared all skip it.
+- **Kept expanded**: one button in the title bar and on the chip toggles "keep expanded" (`OVERLAY_EXPANDED_KEY`). The expanded form is `hovered || expandPinned`, so once on, moving the pointer away keeps the full panel, and once off the control returns to hover-expand/hover-collapse. Its icon is an inline vector too (a square frame plus an arrow, **filled = kept expanded, hollow = not**) with `aria-pressed` in step; toggling only writes `localStorage` and never touches `hovered`, so turning it off while the pointer is still over the overlay keeps it expanded until the pointer leaves. It is a separate state from pinning the position: the former decides whether the panel stays expanded, the latter whether the position can be dragged.
+- **Resizable expansion**: the bottom-right handle calls `stopPropagation` on press (otherwise the anchor's move drag would start too) and then listens to `window` `pointermove`/`pointerup` exactly like the move drag; the origin size comes from `resizeOrigin` (the default width plus the measured panel height before any resize — the same coordinate space, so the first drag does not jump), and every delta is clamped by `clampOverlaySize`: minimum `200×120`, maximum `480×520` reduced against the viewport (keeping `OVERLAY_VIEWPORT_MARGIN`, and never inverting the range on a small viewport). Release writes `localStorage[OVERLAY_SIZE_KEY]` (`{ width, height }`), and mount reads and clamps it, so a hand-edited or viewport-crossing value lands inside the bounds. The handle also takes the keyboard: arrow keys resize by `OVERLAY_RESIZE_STEP` through the same origin and clamping. While resizing the panel does not collapse, just as while dragging (`onMouseLeave` checks both `dragging` and `resizing`). Once the height is fixed only the content area scrolls (`overlayBodyStyle`'s `overflow: auto`), keeping the title row and handle visible.
 - **Data fetch**:
 
 ```js
@@ -344,8 +364,8 @@ Security boundaries:
 
 - the fake `slots.inject` accepts both `settings.models.footer` and `shell.overlay` (assert both slot names are injected);
 - the fake ctx gains `remote.settings.mutate` (capturing NS / ops / revision);
-- the sandbox globals provide a `fetch` double plus `localStorage`/`sessionStorage` stubs;
-- cases: toggle on by default → the card renders the toggle row; clicking → `mutate` receives the `['showBalanceOverlay']` path set; a failed write → optimistic rollback; the overlay renders three window rows on hover while the toggle is on and the envelope is `ok:true` (consuming the host's real `parseUsageResponse` output); `ok:false` renders the matching error copy; the overlay renders `null` while the toggle is off; a config missing the field still renders the chip; the close button writes `showBalanceOverlay=false` and removes the control, and reopening the switch brings the chip back; the chip shows the 5-hour bar and percent, its button set is exactly the body and the pin, the pin icon is hollow by default and fills plus persists on click; chip and panel drags are both gated by pinning, and the click trailing a drag does not expand.
+- the sandbox globals provide a `fetch` double, `localStorage`/`sessionStorage` stubs, a `document` stub (html platform mark plus body attribute access) and a `requestAnimationFrame` queue (`flushFrames()` settles it);
+- cases: toggle on by default → the card renders the toggle row; clicking → `mutate` receives the `['showBalanceOverlay']` path set; a failed write → optimistic rollback; the overlay renders three window rows on hover while the toggle is on and the envelope is `ok:true` (consuming the host's real `parseUsageResponse` output); `ok:false` renders the matching error copy; the overlay renders `null` while the toggle is off; a config missing the field still renders the chip; the close button writes `showBalanceOverlay=false` and removes the control, and reopening the switch brings the chip back (no hover state survives being hidden); the chip shows the 5-hour bar and percent, its button set is the body and the two pin buttons, the pin icon is hollow by default and fills plus persists on click; chip and panel drags are both gated by pinning, and the click trailing a drag does not expand; the anchor carries `tabIndex: -1` and declares both app-region spellings as `no-drag`, and mount/expand write `data-window-drag-recall` which the next frame clears (`win32` writes nothing); the keep-expanded button holds the panel open after the pointer leaves and can be turned off again (with storage, `aria-pressed`, and icon assertions); the resize handle changes width and height by the pointer delta, clamps past the minimum and maximum sizes, persists on release, does not collapse while resizing, and an out-of-range stored size converges on mount, with the keyboard arrows going through the same clamping.
 
 ## 8. Documentation and release
 
@@ -426,3 +446,43 @@ Live feedback reported "the overlay cannot be dragged to a new position", whose 
 - Fix: the drag handler is bound only on the anchor (panel title-bar and content `pointerdown` bubble to it), so `currentTarget` is always the anchor and `offsetParent` is the frame again; the title bar no longer binds its own handler, which would otherwise make `currentTarget` the title bar.
 - Regression guard: the drag test uses "anchor at 100 + pointer delta 60 → assert `left === 160`"; if clamping returns, the result is 0 and the assertion fails. The same test covers dragging from the panel content and the no-collapse-during-drag rule.
 - `userSelect: none` and `touchAction: none` were added to the panel and chip styles so whole-surface dragging never selects text or triggers touch scrolling.
+
+### 11.5 Dragging from the top moving the window, plus keep-expanded and resizing (2026-10-04)
+
+Live feedback reported two things:
+
+1. **After moving the overlay to the top, hovering to expand and then dragging moved the whole interface instead of only the overlay.**
+2. **A "keep expanded" button is needed, and the expanded panel must be resizable with minimum and maximum size limits.**
+
+#### 11.5.1 Root cause (issue 1)
+
+The host's macOS/Electron window dragging has exactly one channel — declarative app-regions (there is no pointer-event implementation under `packages/client/web/src/window-drag/`; the installed app's `app.asar` likewise carries only the `[data-platform=darwin] [data-window-drag]` and `[data-window-drag-recall]` rules, with no JS dragging):
+
+- Electron composes `-webkit-app-region` boxes by **geometry plus DOM order**: `drag` adds geometry, `no-drag` subtracts it, and **the last box containing the point decides** (`window-drag/regions.ts`);
+- the host's `base.css` subtracts drag only for interactive elements: `button`, `a`, `input`, `[role='dialog']`, `[tabindex]`, and so on;
+- the overlay anchor previously declared no app-region at all, and the panel is `role="region"` (not in that list), so the overlay contributed no no-drag box;
+- once moved to the top, the overlay geometrically overlaps `data-window-drag` rows (the conversation header, the sidebar logo row/top strip), and expanding widens that overlap: pressing on the panel body leaves the last containing box a window drag row, so Electron starts a native window drag while our JS also moves the panel — the whole interface moves.
+
+#### 11.5.2 The fix
+
+- **The anchor declares `WebkitAppRegion: 'no-drag'`**: the anchor is the outermost positioned element of the overlay and its box covers both chip and panel; the `shell.overlay` layer renders after every column, so the anchor is later in document order than any drag row and overrides them all. (Buttons inside the panel are still subtracted individually by the host's own rule.)
+- **A recall pulse on every geometry change**: app-region changes once at mount, and Electron re-collects drag rects only when the computed value changes (electron#32341), so expanding, moving, resizing, or a row-count change leaves the new geometry matching the old drag rects. Whenever `[expanded, pos, size, envelope]` changes the component calls `pulseWindowDragRecall()`: only when `dataset.platform === 'darwin'` it sets `data-window-drag-recall` on the body and clears it on the next frame (set then clear = two computed-value changes), the same mechanism as the host's `window-drag/recall.ts`; at most one pulse is in flight, and the host's `touchesRows` ignores the mark's own attribute write, so the pulse cannot re-arm itself.
+- **Regression guard**: `tests/client.spec.ts` asserts the anchor style carries `WebkitAppRegion: 'no-drag'`, that mount puts `data-window-drag-recall` on the body where `flushFrames()` then clears it, and that `hover()` re-arms it; `win32` writes nothing. Removing either the no-drag declaration or the pulse effect makes that test fail (verified).
+
+#### 11.5.3 Keep-expanded and resizing (issue 2)
+
+- **Keep expanded**: a new `localStorage` key `opencode-go-live.overlay.expanded` (`OVERLAY_EXPANDED_KEY`) and one button in the title bar and on the chip; the expanded form became `hovered || expandPinned`, so while it is on the panel no longer collapses when the pointer leaves. The icon keeps the "filled = on" vector language (with `aria-pressed` in step) and is independent of pinning the position.
+- **Resizing**: the bottom-right handle (`role="separator"` plus `tabIndex`, focusable) calls `stopPropagation` on press so it never also starts the anchor's move drag; the origin comes from `resizeOrigin` (default width 264 plus the measured panel height before any resize) and each delta is clamped by `clampOverlaySize` to **minimum 200×120 and maximum 480×520**, further reduced against the viewport by `OVERLAY_VIEWPORT_MARGIN` (24) while never inverting the range on a small viewport; release writes `opencode-go-live.overlay.size`. The panel became `box-sizing: border-box` so the written width and height share the coordinate space of `getBoundingClientRect` and the first drag does not jump; once the height is fixed only the content area scrolls. The keyboard arrows resize by `OVERLAY_RESIZE_STEP` (16) through the same origin and clamping.
+- **Default width semantics changed**: the move from content-box to border-box means `width: 264` is now the panel's actual border-box width (it was about 289px including padding), matching the "264px wide" statement in this design.
+- **Hover state no longer sticks while hidden**: with the switch off the anchor unmounts, so `mouseleave` never fires and `hovered` used to stay `true`; re-opening the switch then landed on an expanded panel while the keep-expanded icon showed off. A read of the switch as off now resets `hovered` too, so re-opening starts from the chip; the regression guard lives in the existing close-button case.
+
+#### 11.5.4 Live acceptance and what remains unverified
+
+**Manually accepted by the user in the DSH desktop profile (with the client bundle synced by hand)**: after moving the overlay to the top, hovering to expand and then dragging no longer moves the window, and both keep-expanded and the bottom-right resize handle work.
+
+Still unverified (the offline suite does not cover them):
+
+1. whether the drag-region recall pulse is always enough to make Electron re-collect after every geometry change (today's acceptance does not prove the timing at every window size);
+2. how the handle feels on a real pointer device and how usable the minimum/maximum sizes are;
+3. how a maximally resized panel overlaps content beneath it (settings page, terminal panel);
+4. window dragging on `win32`, where the host's recall pulse is darwin-only.

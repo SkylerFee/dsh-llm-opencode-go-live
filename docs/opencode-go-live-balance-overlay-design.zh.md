@@ -195,6 +195,15 @@ export const Config = z.object({
 ```js
 const BALANCE_ROUTE = '/api/opencode-go-live/balance' // 与 src/index.ts 的 BALANCE_ROUTE_PATH 保持一致
 const OVERLAY_POS_KEY = 'opencode-go-live.overlay.pos'
+const OVERLAY_PINNED_KEY = 'opencode-go-live.overlay.pinned'      // 固定位置
+const OVERLAY_EXPANDED_KEY = 'opencode-go-live.overlay.expanded'  // 固定展开
+const OVERLAY_SIZE_KEY = 'opencode-go-live.overlay.size'          // { width, height }
+const OVERLAY_DEFAULT_WIDTH = 264   // 未调整过时的面板宽度；高度随内容自适应
+const OVERLAY_MIN_WIDTH = 200, OVERLAY_MIN_HEIGHT = 120   // 最小尺寸
+const OVERLAY_MAX_WIDTH = 480, OVERLAY_MAX_HEIGHT = 520   // 最大尺寸（再按视口收缩）
+const OVERLAY_VIEWPORT_MARGIN = 24  // 尺寸上限相对视口保留的边距
+const OVERLAY_RESIZE_STEP = 16      // 键盘调整大小的步长
+const WINDOW_DRAG_RECALL_ATTR = 'data-window-drag-recall' // 宿主窗口拖拽区重算标记（平行定义）
 const OVERLAY_REFRESH_MS = 300_000   // 5 分钟自动刷新
 const MANUAL_REFRESH_THROTTLE_MS = 10_000
 ```
@@ -211,6 +220,9 @@ const MANUAL_REFRESH_THROTTLE_MS = 10_000
 | `refresh` | 刷新 | Refresh |
 | `closeOverlay` | 关闭用量面板 | Close usage panel |
 | `showOverlay` | 显示用量悬浮窗 | Show usage overlay |
+| `pinOverlay` / `unpinOverlay` | 固定位置 / 解除固定 | Pin position / Unpin position |
+| `pinExpandOverlay` / `unpinExpandOverlay` | 固定展开 / 取消固定展开 | Keep expanded / Stop keeping expanded |
+| `resizeOverlay` | 调整面板大小 | Resize panel |
 | `updatedAtPrefix` | 更新于 | Updated |
 | `hourUnit` | 小时 | h |
 | `minuteUnit` | 分 | m |
@@ -250,18 +262,26 @@ ctx.slots.inject('shell.overlay', () => ctx.slots.register({
 
 - **开关联动**：组件内部读取卡片同步的开关视图（两处共享同一模块级可变状态或由 overlay 自行 `settings.describe()`——**取后者**：overlay 独立订阅 `settings/document-updated` 自行读配置，避免与卡片状态耦合；开关关闭时 `return null`，slot 注册不动）。
 - **布局**（全部使用宿主 theme token，明暗主题自适应）：
-  - `position: absolute`，默认右下角（`right/bottom: 16px`），宽 264px；宿主 `shell.overlay` 容器本身是 `position:absolute; inset:0; pointer-events:none`，其直接子元素自动获得 `pointer-events:auto`，因此面板既随 frame 布局，也不需要额外的指针事件声明；
-  - 标题行：标题 + 固定按钮 + 刷新按钮 + 关闭按钮（按钮上的 `pointerdown` 必须 `stopPropagation`，否则会冒泡成拖拽）；面板没有最小化按钮——收起由鼠标移开自动完成；
+  - `position: absolute`，默认右下角（`right/bottom: 16px`），宽 264px（`box-sizing: border-box`，与 `getBoundingClientRect` 同一坐标系）；宿主 `shell.overlay` 容器本身是 `position:absolute; inset:0; pointer-events:none`，其直接子元素自动获得 `pointer-events:auto`，因此面板既随 frame 布局，也不需要额外的指针事件声明；
+  - 标题行：标题 + 固定展开按钮 + 固定位置按钮 + 刷新按钮 + 关闭按钮（按钮上的 `pointerdown` 必须 `stopPropagation`，否则会冒泡成拖拽）；面板没有最小化按钮——收起由鼠标移开自动完成；
   - 三个窗口行：窗口名 + 进度条（4px 高、圆角）+ `${percent}%` + 倒计时；
-  - 底部：`updatedAtPrefix` + 相对时间。
+  - 底部：`updatedAtPrefix` + 相对时间；
+  - 右下角：调整大小手柄（16px 命中区，`cursor: nwse-resize`），只在展开形态存在。
 - **状态着色**：`status === 'rate-limited'` → `--dsw-alias-state-error-primary`；`percent ≥ 80` → `--dsw-static-amber-500`；否则 `--dsw-alias-state-success-primary`。已核对宿主 Theme 的 `listTokens` 输出：**没有** `--dsw-alias-state-warning-*`，因此警告档使用静态琥珀色板。
 - **配置未读到时不渲染**：开关初值为 `null`（未知）。只有读到 `true` 才渲染并查询，避免开关关闭时闪现面板，也避免一次多余的上游请求。
 - **关闭与开关同步**：关闭按钮把插件配置的 `showBalanceOverlay` 写成 `false`，而不是本地隐藏。卡片开关与悬浮窗关闭共用同一个 `writeOverlayEnabled` 入口，该入口每次写入前重新读取 revision，避免两个入口把对方的写标记为过期（`settings-conflict`）；写入成功后宿主广播的 `settings/document-updated` 使卡片开关同步显示为关。面板不保留任何独立的关闭状态，因此不存在「开关显示开、面板却不显示」的分叉。
 - **固定位置**：标题栏／徽章上的同一个按钮切换固定状态。图标是内联矢量图钉（圆形头 + 针身）：**已固定为实心（`fill: currentColor` + 品牌色），未固定为空心（`fill: none` + 次要色）**，`aria-pressed` 同步；**默认不固定**（`localStorage` 无键即为未固定）。固定后 `startDrag` 直接返回，位置保持不变，状态写入 `localStorage` 跨刷新保持。使用矢量图标而不是 emoji，是为了让「实心／空心」由当前颜色渲染，可随主题变化并且可被测试断言。
-- **徽章是默认形态、悬浮展开**：不再有持久的最小化状态，也不再需要最小化按钮——默认渲染徽章（5 小时窗口的进度条与用量百分比 + 固定按钮），鼠标移入锚点即展开完整面板，移出即收回。进度条与百分比都取已用值，取整并钳制到 0–100，着色沿用 `barColor`；无数据时显示占位符，失败时显示告警符。徽章主体是独立按钮（供不支持悬浮的设备展开），与固定按钮并列，避免按钮嵌套按钮；收起期间查询与自动刷新照常进行。
+- **徽章是默认形态、悬浮展开**：不再有持久的最小化状态，也不再需要最小化按钮——默认渲染徽章（5 小时窗口的进度条与用量百分比 + 固定展开按钮 + 固定位置按钮），鼠标移入锚点即展开完整面板，移出即收回。进度条与百分比都取已用值，取整并钳制到 0–100，着色沿用 `barColor`；无数据时显示占位符，失败时显示告警符。徽章主体是独立按钮（供不支持悬浮的设备展开），与两个固定按钮并列，避免按钮嵌套按钮；收起期间查询与自动刷新照常进行。
 - **锚点常驻**：承载悬浮判定与徽章整块拖拽的 `div` 常驻，徽章与面板是它的内层内容。若把判定绑在会随内容切换而卸载的元素上，`mouseleave` 会在展开瞬间触发，形成展开/收回的抖动循环。
 - **界面偏好与配置的分工**：位置与固定是浏览器本地界面偏好（`localStorage`）；是否展示由插件配置 `showBalanceOverlay` 决定，两者不混用同一存储。
 - **拖拽**：`onPointerDown` **只绑在锚点上**，徽章与面板（标题栏及内容区）的事件都冒泡到它，因此 `event.currentTarget` 恒为锚点。这一点是正确性前提：位置换算需要以锚点为参照，因为锚点才是 `position: absolute` 的定位元素，只有它的 `offsetParent` 是 frame；若改取面板元素，面板的 `offsetParent` 会解析到锚点自身，可用范围被钳制成 0，表现为「拖不动」。`pointermove` 更新位置，松开时 clamp 到视口内并写 `localStorage[OVERLAY_POS_KEY]`（`{ x, y }`）。徽章整块可拖且内部含按钮，因此移动过的拖拽会记录时间戳，`DRAG_CLICK_SUPPRESS_MS`(250ms) 内的点击被忽略，避免「移动位置」被识别成「点击展开」。挂载时读取位置，越界（视口变更后）则回退默认右下角。
+- **锚点从窗口拖拽几何中减除，两道保险**：
+  1. **主保障是宿主自己的规则**：锚点带 `tabIndex: -1`，命中宿主 `base.css` 的交互元素选择器 `html[data-platform=darwin] :is(button, a, input, …, [contenteditable='true'], [tabindex], [role='dialog'], …) { -webkit-app-region: no-drag }`（属性选择器不看取值，`-1` 因此不进 Tab 顺序，也不会带来多余的焦点停靠点）。这条规则由宿主维护并随宿主一起验证，已在已安装 app 的 `app.asar` 中核对存在（`…,[contenteditable=true],[tabindex],…){-webkit-app-region:no-drag}`）。
+  2. **内联声明作为兜底**：锚点同时声明 `WebkitAppRegion: 'no-drag'` 与 `webkitAppRegion: 'no-drag'` 两种拼写。之所以不只用一种：Blink 的 CSSOM 别名只暴露小写 w 的 `webkitAppRegion`（对已安装的 Electron Framework 二进制做字符串核对：`webkitTransform`／`webkitAppearance`／`webkitUserSelect` 均为小写形式，大写 `Webkit*` 形式 0 次），而 WebKit 系引擎的历史拼写是大写 W；两种都写才不依赖具体引擎的别名表。
+  锚点是悬浮窗最外层定位元素，其盒子覆盖徽章与面板；`shell.overlay` 层排在各列之后，因此减除盒在文档顺序上晚于任何 `data-window-drag` 行，能整体压过它们。
+- **拖拽区重算脉冲**：`no-drag` 只在挂载时改变一次 app-region 计算值；Electron 只在计算值变化时重新收集拖拽矩形（electron#32341），因此展开、移动、调整大小或数据行数变化之后，旧几何仍可能命中窗口拖拽行。组件在 `[expanded, pos, size, envelope]` 任一变化时调用 `pulseWindowDragRecall()`：仅在 `document.documentElement.dataset.platform === 'darwin'` 时，先给 `document.body` 写 `data-window-drag-recall`，再在下一帧移除——先写后清即两次计算值变化，正是宿主 `window-drag/recall.ts` 的同一机制（该文件对 “mounted overlay 自身的 app-region 变化” 已作同义说明）。平台不符、无 `document` 或脉冲未清除时直接跳过。
+- **固定展开**：标题栏与徽章上的同一个按钮切换「固定展开」（`OVERLAY_EXPANDED_KEY`）。展开形态为 `hovered || expandPinned`，所以打开后指针移开仍保持完整面板，关闭后回到「悬浮展开、移开收起」。按钮图标同样是内联矢量（方形框 + 箭头，**实心=已固定展开，空心=未固定**）并同步 `aria-pressed`；切换只写 `localStorage`，不触碰 `hovered`——指针仍在悬浮窗上时关闭固定展开会保持展开到指针移出为止。它与「固定位置」是两个独立状态：前者决定是否常驻展开，后者决定能否拖动位置。
+- **展开尺寸可调**：右下角手柄按下时 `stopPropagation`（否则会同时触发锚点的移动拖拽），随后与移动拖拽同构地监听 `window` 的 `pointermove`/`pointerup`；起点尺寸取 `resizeOrigin`（未调整过时用默认宽度与面板实测高度，两者同坐标系所以不会跳变），每次位移经 `clampOverlaySize` 收敛：最小 `200×120`、最大 `480×520` 再与视口相减（留 `OVERLAY_VIEWPORT_MARGIN`，且不因视口过小而反转区间）。松手写入 `localStorage[OVERLAY_SIZE_KEY]`（`{ width, height }`）；挂载时读取并钳制，因此手工改坏或跨视口的历史值都在边界内收敛。手柄支持键盘：方向键按 `OVERLAY_RESIZE_STEP` 收放，走同一套起点与钳制。调整期间与拖拽一样不收起（`onMouseLeave` 同时看 `dragging` 与 `resizing`）。高度一旦固定，只有内容区滚动（`overlayBodyStyle` 的 `overflow: auto`），标题行与手柄始终可见。
 - **数据获取**：
 
 ```js
@@ -342,8 +362,8 @@ async function queryBalance(signal) {
 
 - fake `slots.inject` 同时接受 `settings.models.footer` 与 `shell.overlay`（断言两个 slot 名都被注入）；
 - fake ctx 增加 `remote.settings.mutate`（捕获 NS / ops / revision）；
-- sandbox 全局提供 `fetch` 替身与 `localStorage`/`sessionStorage` 桩；
-- 用例：开关默认开 → 卡片渲染开关行；点击开关 → `mutate` 收到 `['showBalanceOverlay']` path set；写入失败 → 乐观回滚；overlay 在开关开 + envelope `ok:true` 时悬浮渲染三窗口行（直接消费宿主 `parseUsageResponse` 的真实产出）；`ok:false` 时渲染对应错误文案；开关关时 overlay 渲染 `null`；配置里没有该字段时默认渲染徽章；关闭按钮写入 `showBalanceOverlay=false` 后控件消失、重新打开开关后徽章恢复；徽章显示 5 小时进度条与百分比、按钮集合只剩主体与固定、固定图标默认空心且点击后实心并写入存储；徽章与面板拖拽都受固定门控、拖拽余波的点击不展开。
+- sandbox 全局提供 `fetch` 替身、`localStorage`/`sessionStorage` 桩、`document` 桩（html 平台标记 + body 属性读写）与 `requestAnimationFrame` 队列（可 `flushFrames()` 结算）；
+- 用例：开关默认开 → 卡片渲染开关行；点击开关 → `mutate` 收到 `['showBalanceOverlay']` path set；写入失败 → 乐观回滚；overlay 在开关开 + envelope `ok:true` 时悬浮渲染三窗口行（直接消费宿主 `parseUsageResponse` 的真实产出）；`ok:false` 时渲染对应错误文案；开关关时 overlay 渲染 `null`；配置里没有该字段时默认渲染徽章；关闭按钮写入 `showBalanceOverlay=false` 后控件消失、重新打开开关后徽章恢复（隐藏期间不残留悬浮态）；徽章显示 5 小时进度条与百分比、按钮集合为主体与两个固定按钮、固定图标默认空心且点击后实心并写入存储；徽章与面板拖拽都受固定门控、拖拽余波的点击不展开；锚点带 `tabIndex: -1` 且两种 app-region 拼写都声明为 `no-drag`，挂载/展开后写 `data-window-drag-recall` 并在下一帧清除（`win32` 平台不写）；固定展开按钮让面板在移开鼠标后保持展开并能取消（含存储与 `aria-pressed`/图标断言）；调整大小手柄按位移改变宽高、超界被钳制到最小/最大尺寸、松手写入存储、调整期间不收起、越界历史值在挂载时收敛，键盘方向键走同一套钳制。
 
 ## 8. 文档与发布
 
@@ -424,3 +444,43 @@ async function queryBalance(signal) {
 - 修复：拖拽处理器改为只绑在锚点上（面板标题栏与内容区的 `pointerdown` 冒泡到锚点），`currentTarget` 恒为锚点，`offsetParent` 恢复为 frame；标题栏不再单独绑定，避免 `currentTarget` 变成标题栏。
 - 回归守卫：拖拽测试用「锚点位置 100 + 指针位移 60 → 断言 `left === 160`」；若钳制再次发生，结果为 0 而断言失败。测试同时覆盖"面板内容区也可拖动"与拖拽期不收起。
 - 顺带在面板与徽章样式上加 `userSelect: none` 与 `touchAction: none`，整块可拖不会选中文字或触发触摸滚动。
+
+### 11.5 顶部拖动拖走窗口的修复与固定展开／尺寸调整（2026-10-04）
+
+实机反馈两项：
+
+1. **悬浮窗移到顶部后，鼠标 hover 展开再拖动，整个界面跟着拖动**；
+2. **需要「固定展开」按钮，且展开面板要能调整大小，并有最大／最小尺寸限制。**
+
+#### 11.5.1 根因（问题 1）
+
+宿主 macOS/Electron 的窗口拖动只有声明式 app-region 一条通道（`packages/client/web/src/window-drag/` 下没有指针事件实现；已安装 app 的 `app.asar` 中同样只有 `[data-platform=darwin] [data-window-drag]` 与 `[data-window-drag-recall]` 规则，无 JS 拖动）：
+
+- Electron 把 `-webkit-app-region` 盒子按**几何 + DOM 顺序**合成，`drag` 加几何、`no-drag` 减几何，**最后一个包含该点的盒子决定**（`window-drag/regions.ts`）；
+- 宿主在 `base.css` 里只对 `button`、`a`、`input`、`[role='dialog']`、`[tabindex]` 等交互元素减除 drag；
+- 悬浮窗锚点此前**没有**声明任何 app-region，而面板是 `role="region"`（不在减除列表里），因此它本身不贡献任何 no-drag 盒子；
+- 悬浮窗移到顶部后与 `data-window-drag` 行（对话头、侧栏 logo 行／顶部条）几何重叠，展开又进一步扩大重叠区域：在面板正文按下时，最后的 drag 盒子仍是窗口拖拽行 → Electron 开始原生拖窗，同时我们的 JS 也在移动面板，表现为「整个界面被拖动」。
+
+#### 11.5.2 修复
+
+- **锚点声明 `WebkitAppRegion: 'no-drag'`**：锚点是悬浮窗最外层定位元素，其盒子覆盖徽章与面板；`shell.overlay` 层在所有列之后渲染，锚点在文档顺序上晚于任何 drag 行，因此能整体压过它们。（面板内部的 `button` 仍由宿主规则各自减除。）
+- **几何变化时补拖拽区重算脉冲**：app-region 只在挂载时变化一次，而 Electron 只在计算值变化时重新收集拖拽矩形（electron#32341），所以展开、移动、调整大小、数据行数变化都会让新几何落回旧拖拽矩形。组件在 `[expanded, pos, size, envelope]` 变化时调用 `pulseWindowDragRecall()`：仅在 `dataset.platform === 'darwin'` 时先写 body 的 `data-window-drag-recall`、下一帧清除（先写后清＝两次计算值变化），与宿主 `window-drag/recall.ts` 同一机制；同一时刻最多一次脉冲，脉冲属性本身的变更也被宿主的 `touchesRows` 忽略，不会自激。
+- **回归守卫**：`tests/client.spec.ts` 断言锚点样式含 `WebkitAppRegion: 'no-drag'`、挂载后 body 出现 `data-window-drag-recall` 且 `flushFrames()` 后清除、`hover()` 展开后再次出现；`win32` 平台不写该标记。分别移除 no-drag 声明或脉冲副作用，该用例都会失败（已实测）。
+
+#### 11.5.3 固定展开与尺寸调整（问题 2）
+
+- **固定展开**：新增 `localStorage` 键 `opencode-go-live.overlay.expanded`（`OVERLAY_EXPANDED_KEY`）与标题栏／徽章上的同一按钮；展开形态改为 `hovered || expandPinned`，因此固定展开期间指针移开不再收起。图标沿用「实心＝已固定」的矢量语言（`aria-pressed` 同步），与「固定位置」互不影响。
+- **尺寸调整**：右下角手柄（`role="separator"` + `tabIndex`，可聚焦）按下时 `stopPropagation`，避免与锚点的移动拖拽同时生效；起点取 `resizeOrigin`（未调整过＝默认宽度 264 + 面板实测高度），位移经 `clampOverlaySize` 收敛为 **最小 200×120、最大 480×520**，并按视口减去 `OVERLAY_VIEWPORT_MARGIN`(24)（视口过小时以下限为准，区间不反转）；松手写 `opencode-go-live.overlay.size`。面板改为 `box-sizing: border-box`，使写入的宽高与 `getBoundingClientRect` 同坐标系，首次拖动不跳变；高度固定后仅内容区滚动。键盘方向键按 `OVERLAY_RESIZE_STEP`(16) 走同一套起点与钳制。
+- **默认宽度语义变化**：面板由 content-box 改为 border-box，`width: 264` 现在是面板的实际外框宽度（此前含内边距约 289px），与设计文档「宽 264px」一致。
+- **顺带修复隐藏期间的悬浮态残留**：开关关闭时锚点卸载，`mouseleave` 不会再补上，原先 `hovered` 会保持 `true`，重新打开开关就让面板直接停在展开形态、而「固定展开」图标显示未固定。现在读到开关为关时同时把 `hovered` 复位，重新打开开关先回到徽章；回归守卫加在既有「关闭按钮写入配置」用例中。
+
+#### 11.5.4 实机验收与仍未验证项
+
+**已由用户在 DSH 桌面端 profile（手工同步的客户端 bundle）手动验收**：悬浮窗移到顶部后 hover 展开再拖动不再带走窗口，固定展开与右下角手柄调整大小可用。
+
+仍未验证（离线测试不覆盖）：
+
+1. 拖拽区重算脉冲是否在每次几何变化后都足以让 Electron 重算（当前验收通过不等于时序在所有窗口尺寸下都成立）；
+2. 手柄在真实指针设备上的手感与最小／最大尺寸的可用性；
+3. 面板调整到最大尺寸后与下方元素（设置页、终端面板）的视觉遮挡关系；
+4. `win32` 平台的窗口拖拽行为（宿主的重算脉冲只按 darwin 生效）。
