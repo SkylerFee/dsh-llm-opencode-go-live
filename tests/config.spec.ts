@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { Config } from '../src/config.js'
+import { Config, resolveConfig } from '../src/config.js'
 
 /** 插件路由默认使用的凭据引用。 */
 const LIVE_ROUTE_REF = 'OPENCODE_GO_LIVE_API_KEY'
@@ -27,6 +27,28 @@ test('bundle 补丁使用与 schema 默认值相同的凭据引用', async () =>
 test('bundle 补丁把目录快照放在 Harness home 的 cache 目录', async () => {
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
   assert.match(patch, /cachePath:\s*!!js dshHomePath\('cache', 'opencode-go-live\.json'\)/)
+})
+
+test('余额悬浮面板默认开启且可由 volatile 字段覆盖', () => {
+  // schema 默认值必须与 resolveConfig 的默认值一致：两者共同决定卡片开关的初始状态。
+  assert.equal(Config({}).showBalanceOverlay.get(), true)
+  assert.equal(Config({ showBalanceOverlay: false }).showBalanceOverlay.get(), false)
+  assert.equal(resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF }).showBalanceOverlay, true)
+  assert.equal(resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF, showBalanceOverlay: false }).showBalanceOverlay, false)
+})
+
+test('余额悬浮面板字段拒绝非布尔值', () => {
+  assert.throws(
+    () => resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF, showBalanceOverlay: 'yes' }),
+    (error: unknown) => error instanceof TypeError
+      && error.message === 'llm-opencode-go-live: showBalanceOverlay must be boolean',
+  )
+})
+
+test('bundle 补丁不为余额悬浮面板重复默认值', async () => {
+  // 默认值由 schema 提供；写进 patch 会让用户覆盖失去单一来源。
+  const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  assert.doesNotMatch(patch, /showBalanceOverlay/)
 })
 
 test('git 安装依赖的构建钩子是 prepack 而不是 prepare', async () => {

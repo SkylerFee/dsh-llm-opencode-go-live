@@ -6,8 +6,39 @@ import { test } from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmError } from '@deepseek-ai/dsh-llm'
 import * as Live from '../src/index.js'
+import { OPENCODE_GO_USAGE_URL } from '../src/balance.js'
 import { JsonCatalogStore } from '../src/store.js'
 import { transformProvider } from '../src/transform.js'
+
+/** 装好的余额路由处理器；测试直接调用登记的 fetch 面。 */
+type BalanceRouteHandler = (request: Request) => Promise<Response>
+
+/**
+ * 挂载真实 Cordis 树并把 `connection` 服务替换为登记表替身。
+ * @returns 上下文、已登记路由表与恢复函数。
+ */
+async function mountWithBalanceRoute(): Promise<{
+  ctx: Context
+  routes: Map<string, BalanceRouteHandler>
+  dispose: () => Promise<void>
+}> {
+  const ctx = new Context()
+  const routes = new Map<string, BalanceRouteHandler>()
+  ctx.provide('connection', {
+    fetch: {
+      register: (route: { path: string; fetch: BalanceRouteHandler }) => {
+        routes.set(route.path, route.fetch)
+        return () => { routes.delete(route.path) }
+      },
+    },
+  } as never)
+  await ctx.plugin(LlmRuntime)
+  return {
+    ctx,
+    routes,
+    dispose: async () => { await ctx.fiber.dispose() },
+  }
+}
 
 test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-opencode-go-live-'))
@@ -58,5 +89,101 @@ test('Cordis 挂载后恢复模型并在请求时拒绝缺失凭据', async () =
   } finally {
     await ctx.fiber.dispose()
     await rm(directory, { recursive: true })
+  }
+})
+
+test('余额路由带凭据查询上游并把归一化结果返回给浏览器', async () => {
+  const { ctx, routes, dispose } = await mountWithBalanceRoute()
+  const originalFetch = globalThis.fetch
+  const upstream: { url: string; authorization: string | null }[] = []
+  globalThis.fetch = (async (input: URL | RequestInfo, init?: RequestInit) => {
+    upstream.push({
+      url: String(input),
+      authorization: new Headers(init?.headers).get('authorization'),
+    })
+    return new Response(JSON.stringify({
+      usage: {
+        rolling: { status: 'ok', percent: 42.5, resetsAt: '2026-10-04T08:00:00.000Z' },
+        monthly: { status: 'rate-limited', percent: 100, resetsAt: '2026-11-01T00:00:00.000Z' },
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }) as typeof globalThis.fetch
+  try {
+    ctx.provide('credentials', { resolve: async () => ({ value: 'sk-test-secret' }) } as never)
+    const fiber = await ctx.plugin(Live, {
+      apiKeyEnv: 'OPENCODE_GO_LIVE_API_KEY',
+      catalog: { refreshOnStart: false, refreshIntervalMs: 0 },
+    })
+    const handler = routes.get(Live.BALANCE_ROUTE_PATH)
+    assert.ok(handler, '插件必须在 connection 可用时登记余额路由')
+
+    const response = await handler(new Request('http://127.0.0.1/api/opencode-go-live/balance'))
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('content-type'), 'application/json')
+    const envelope = await response.json() as Record<string, any>
+    assert.equal(envelope.ok, true)
+    assert.equal(envelope.usage.rolling.percent, 42.5)
+    assert.equal(envelope.usage.monthly.status, 'rate-limited')
+    assert.equal(envelope.usage.weekly, undefined)
+    assert.ok(Number.isFinite(Date.parse(envelope.checkedAt)))
+    assert.deepEqual(upstream, [{
+      url: OPENCODE_GO_USAGE_URL,
+      authorization: 'Bearer sk-test-secret',
+    }])
+    // 响应不得回显密钥。
+    assert.ok(!JSON.stringify(envelope).includes('sk-test-secret'))
+
+    // 卸载插件必须撤下路由，避免残留指向已释放运行时的处理器。
+    await fiber.dispose()
+    assert.equal(routes.has(Live.BALANCE_ROUTE_PATH), false)
+  } finally {
+    globalThis.fetch = originalFetch
+    await dispose()
+  }
+})
+
+test('凭据缺失时余额路由回答 MISSING_CREDENTIAL 而不请求上游', async () => {
+  const { ctx, routes, dispose } = await mountWithBalanceRoute()
+  const originalFetch = globalThis.fetch
+  let upstreamCalls = 0
+  globalThis.fetch = (async () => {
+    upstreamCalls += 1
+    return new Response('{}', { status: 200 })
+  }) as typeof globalThis.fetch
+  try {
+    ctx.provide('credentials', { resolve: async () => undefined } as never)
+    await ctx.plugin(Live, {
+      apiKeyEnv: 'OPENCODE_GO_LIVE_API_KEY',
+      catalog: { refreshOnStart: false, refreshIntervalMs: 0 },
+    })
+    const handler = routes.get(Live.BALANCE_ROUTE_PATH)
+    assert.ok(handler)
+
+    const response = await handler(new Request('http://127.0.0.1/api/opencode-go-live/balance'))
+    const envelope = await response.json() as Record<string, any>
+    assert.equal(response.status, 200)
+    assert.equal(envelope.ok, false)
+    assert.equal(envelope.code, 'MISSING_CREDENTIAL')
+    assert.equal(upstreamCalls, 0)
+  } finally {
+    globalThis.fetch = originalFetch
+    await dispose()
+  }
+})
+
+test('没有 connection 服务时插件照常挂载且不登记余额路由', async () => {
+  const ctx = new Context()
+  try {
+    ctx.provide('credentials', { resolve: async () => undefined } as never)
+    await ctx.plugin(LlmRuntime)
+    // 纯 CLI composition：没有浏览器载体，插件必须静默降级。
+    const fiber = await ctx.plugin(Live, {
+      apiKeyEnv: 'OPENCODE_GO_LIVE_API_KEY',
+      catalog: { refreshOnStart: false, refreshIntervalMs: 0 },
+    })
+    assert.deepEqual(ctx.llm.listProviders(), [{ id: Live.ROUTE_ID, name: Live.DISPLAY_NAME }])
+    await fiber.dispose()
+  } finally {
+    await ctx.fiber.dispose()
   }
 })

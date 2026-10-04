@@ -5,6 +5,8 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Config, resolveConfig } from './config.js'
 import type { ResolvedConfig } from './config.js'
+import { createUsageSource } from './balance.js'
+import type { UsageEnvelope, UsageSource } from './balance.js'
 import { createDynamicAdapter, ROUTE_ID } from './provider.js'
 import { createModelsSource } from './source.js'
 import type { ModelsSource } from './source.js'
@@ -14,6 +16,8 @@ import { transformProvider } from './transform.js'
 
 export { Config, resolveConfig } from './config.js'
 export type { CatalogConfig, ResolvedConfig } from './config.js'
+export { createUsageSource, OPENCODE_GO_USAGE_URL, parseUsageResponse } from './balance.js'
+export type { UsageEnvelope, UsageErrorCode, UsageReport, UsageSource, UsageWindow } from './balance.js'
 export { OPEN_CODE_GO_POLICIES, policyFor } from './policy.js'
 export type { OpenCodeGoApi, OpenCodeGoPolicy } from './policy.js'
 export { createModelsSource } from './source.js'
@@ -29,6 +33,31 @@ export const name = 'llm-opencode-go-live'
 export const inject = ['llm', 'credentials']
 const STARTUP_RETRY_MS = 15_000
 const MAX_STARTUP_RETRIES = 4
+
+/** 浏览器可访问的余额路由；client.js 以平行常量引用同一路径。 */
+export const BALANCE_ROUTE_PATH = '/api/opencode-go-live/balance'
+const USAGE_TIMEOUT_MS = 10_000
+
+/**
+ * 宿主 Fetch 路由注册面。
+ * 与 `@deepseek-ai/dsh-client-connection` 的 host 契约一致；按服务发现使用，
+ * 使发布包不必新增该依赖（与既有 `ctx.get('fs')` 的反射式窄接口同一姿态）。
+ */
+interface HostFetchRoute {
+  path: string
+  methods: readonly string[]
+  requestBody: 'buffered' | 'streaming'
+  fetch: (request: Request) => Promise<Response>
+}
+
+interface HostConnectionFace {
+  fetch: { register(route: HostFetchRoute): () => void }
+}
+
+/** 携带可选浏览器载体的上下文视图；`connection` 未挂载时为 undefined。 */
+interface ContextWithConnection extends Context {
+  connection?: HostConnectionFace
+}
 
 interface RuntimeOptions {
   config: ResolvedConfig
@@ -148,6 +177,61 @@ export class OpenCodeGoLiveRuntime {
 }
 
 /**
+ * 解析当前路由的 API Key。
+ * 模型适配器与余额路由共用同一条凭据路径，避免两处对引用名与校验的理解分叉。
+ * @param ctx - Cordis 上下文。
+ * @param apiKeyEnv - 凭据引用名。
+ * @returns 可用的 API Key。
+ */
+async function resolveLiveApiKey(ctx: Context, apiKeyEnv: string): Promise<string> {
+  const ref = credentialRef(apiKeyEnv)
+  const credentials = ctx.get('credentials')
+  if (credentials === undefined) {
+    throw new LlmError('llm-opencode-go-live: credentials service is not mounted', 'MISSING_CREDENTIAL')
+  }
+  const value = (await credentials.resolve(ref))?.value
+  if (value === undefined) {
+    throw new LlmError(`llm-opencode-go-live: missing credential ${ref}`, 'MISSING_CREDENTIAL')
+  }
+  return assertUsableApiKey(value, 'llm-opencode-go-live', ref)
+}
+
+/**
+ * 余额路由处理器：解析 API Key、查询上游用量并返回统一响应包。
+ * 认证由 `/api` 桥在到达本处理器之前完成；本处理器始终返回 HTTP 200，
+ * 客户端按 envelope 的 code 渲染本地化文案。
+ * @param ctx - Cordis 上下文。
+ * @param apiKeyEnv - 读取当前凭据引用的函数；与模型适配器一样按请求取值，volatile 变更立即生效。
+ * @param source - 用量来源；测试与代理可覆盖端点。
+ * @param request - 浏览器请求；其 signal 与超时共同约束上游访问。
+ * @returns JSON 响应，不包含密钥或上游响应原文。
+ */
+async function balanceRoute(
+  ctx: Context,
+  apiKeyEnv: () => string,
+  source: UsageSource,
+  request: Request,
+): Promise<Response> {
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(USAGE_TIMEOUT_MS)])
+  let envelope: UsageEnvelope
+  try {
+    const apiKey = await resolveLiveApiKey(ctx, apiKeyEnv())
+    envelope = await source.fetchUsage(apiKey, signal)
+  } catch (error) {
+    if (error instanceof LlmError) {
+      envelope = { ok: false, code: 'MISSING_CREDENTIAL', message: error.message }
+    } else {
+      envelope = { ok: false, code: 'UNKNOWN', message: 'llm-opencode-go-live: balance route failed' }
+      ctx.logger.warn(`llm-opencode-go-live: balance route failed (${String(error)})`)
+    }
+  }
+  return new Response(JSON.stringify(envelope), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/**
  * Cordis 插件入口。插件直接注册 Harness 原生 LLM 适配器。
  * @param ctx - Cordis 上下文。
  * @param config - 插件配置。
@@ -157,7 +241,8 @@ export function apply(
   config: Config,
 ): void {
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
-  const resolvedConfig = resolveConfig({ apiKeyEnv: config.apiKeyEnv.get(), catalog: config.catalog })
+  const resolvedConfig = resolveConfig({ apiKeyEnv: config.apiKeyEnv.get(), catalog: config.catalog, showBalanceOverlay: config.showBalanceOverlay?.get() })
+  const usageSource = createUsageSource()
   const runtime = new OpenCodeGoLiveRuntime({
     config: resolvedConfig,
     source: createModelsSource(),
@@ -171,18 +256,7 @@ export function apply(
     [ROUTE_ID],
     createDynamicAdapter(
       () => runtime.getSnapshot(),
-      async () => {
-        const ref = credentialRef(config.apiKeyEnv.get())
-        const credentials = ctx.get('credentials')
-        if (credentials === undefined) {
-          throw new LlmError('llm-opencode-go-live: credentials service is not mounted', 'MISSING_CREDENTIAL')
-        }
-        const value = (await credentials.resolve(ref))?.value
-        if (value === undefined) {
-          throw new LlmError(`llm-opencode-go-live: missing credential ${ref}`, 'MISSING_CREDENTIAL')
-        }
-        return assertUsableApiKey(value, 'llm-opencode-go-live', ref)
-      },
+      () => resolveLiveApiKey(ctx, config.apiKeyEnv.get()),
       {
         // 宿主附件服务与文件系统映射按请求解析，与内置适配器的接线一致；
         // 挂载缺失时请求中的图片被明确拒绝，而不是静默丢弃。
@@ -196,6 +270,17 @@ export function apply(
       },
     ),
   )
+  // 余额路由是可选能力：纯 CLI composition 不挂载 connection，此时不注册也不报错。
+  ctx.inject(['connection'], (child) => {
+    const connection = (child as ContextWithConnection).connection
+    if (connection === undefined) return
+    child.effect(() => connection.fetch.register({
+      path: BALANCE_ROUTE_PATH,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: request => balanceRoute(child, () => config.apiKeyEnv.get(), usageSource, request),
+    }))
+  })
   void runtime.start().catch(error => {
     ctx.logger.error(`llm-opencode-go-live: startup failed (${String(error)})`)
   })
