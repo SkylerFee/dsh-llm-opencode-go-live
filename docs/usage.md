@@ -71,15 +71,18 @@ The chip expanding into the full panel and collapsing back when the mouse leaves
 
 ![The usage overlay chip expanding into the full panel](img/usage-view.gif)
 
-**The default form is a chip** occupying a small bottom-right area, showing the 5-hour window's bar and usage percent plus a pin button:
+**The default form is a chip** occupying a small bottom-right area, showing the 5-hour window's bar and usage percent plus two buttons (keep-expanded, pin):
 
 | Action | Behavior |
 | --- | --- |
 | Move the mouse onto the chip | Expands the full panel (three billing windows plus the updated time). |
-| Move the mouse away | Collapses back to the chip automatically; no button is involved. |
-| Drag the chip or the panel (while unpinned) | Moves it; anywhere on the panel except its buttons works as a drag handle. A click at the end of a drag is not treated as an expand. |
+| Move the mouse away | Collapses back to the chip automatically; no button is involved (unless keep-expanded is on). |
+| Drag the chip or the panel (while unpinned) | Moves it; anywhere on the panel except its buttons and the resize handle works as a drag handle. A click at the end of a drag is not treated as an expand. |
 | Click the chip body | Expands the panel on devices without hover. |
+| Click the keep-expanded button | Holds the panel open so moving the mouse away no longer collapses it. The icon is a vector square frame with an arrow: **filled = kept expanded, hollow = not**, and **the default is off**. Clicking again releases it. |
 | Click the pin button | Locks or unlocks the current position. The icon is a vector pin: **filled = pinned, hollow = unpinned**, and **the default is unpinned**. While pinned, neither the chip nor the panel can be dragged. |
+
+"Keep expanded" and "pin position" are independent: the former decides whether the panel stays expanded, the latter whether the position can be dragged.
 
 The full panel shows the OpenCode Go subscription usage across three billing windows:
 
@@ -93,11 +96,24 @@ Each row shows the percent, a bar, and a reset countdown; the bar turns amber ne
 
 | Button | Behavior |
 | --- | --- |
+| Keep expanded | The same state as the chip's button; toggles whether the panel stays expanded. |
 | Pin | Locks or unlocks the position, sharing one state with the chip's button. |
 | ⟳ Refresh | Queries immediately (throttled to once per 10 seconds). |
 | × Close | Writes the plugin's `showBalanceOverlay` to `false`, which **turns the Models-card switch off in step**; reopen that switch to show the control again. |
 
-The panel has no minimize button: moving the mouse away collapses it into the chip. Position and pinned state are browser-local interface preferences (`localStorage`) and are not written to plugin config; whether the control is shown at all is decided by plugin config.
+### Resizing the panel
+
+The expanded panel has a resize handle in its bottom-right corner (two diagonal strokes, with a diagonal resize cursor):
+
+| Action | Behavior |
+| --- | --- |
+| Drag the handle | Changes the panel's width and height together; the handle never moves the panel itself. |
+| Arrow keys (with the handle focused) | ←/→ change the width and ↑/↓ the height, 16px per press. |
+| Size limits | Minimum 200×120 and maximum 480×520; a smaller viewport shrinks the cap further (keeping a 24px margin), and it is never below the minimum. |
+
+The default width is 264px with content-driven height; once resized, both dimensions are fixed and any overflow scrolls inside the content area (the title row and handle stay visible). The size is stored in the browser's `localStorage`, and a hand-edited value or a smaller window converges to the legal range on mount.
+
+The panel has no minimize button: moving the mouse away collapses it into the chip (unless keep-expanded is on). Position, pinning, keep-expanded, and size are browser-local interface preferences (`localStorage` keys `opencode-go-live.overlay.pos`/`.pinned`/`.expanded`/`.size`) and are not written to plugin config; whether the control is shown at all is decided by plugin config.
 
 The host balance route `GET /api/opencode-go-live/balance` supplies the data: the host queries `https://opencode.ai/zen/go/v1/usage` with the credential named by `apiKeyEnv` and hands only the normalized usage to the browser, so the API key never leaves the host process. That endpoint does not appear in OpenCode's public documentation and is an upstream implementation convention; if upstream changes it, the panel reports a failed query rather than affecting model calls.
 
@@ -142,7 +158,10 @@ The catalog fields belong to plugin config; the plugin's Models card edits the A
 | The switch is on but no overlay appears | The overlay lives on the browser frame's floating layer, so confirm the page is the Web client rather than a terminal session; if the panel's × was used, the Models-card switch was turned off in step — turn it back on. |
 | Only a small chip appears in the corner | That is the default form: the chip shows the 5-hour bar and usage percent, expands into the full panel on hover, and collapses when the mouse leaves. |
 | The overlay cannot be dragged | It is pinned; click the pin button (filled means pinned) to unlock it. Both the chip and the panel can then be dragged. |
-| The position or pinned state is wrong | Both live in the browser's `localStorage` (keys `opencode-go-live.overlay.*`); clear them to restore the defaults (bottom-right, unpinned). |
+| Dragging the overlay at the top moves the whole window | An older defect: the host composes window drag regions by geometry, and an overlay moved to the top overlapped a drag row without being subtracted. This fix subtracts the whole overlay with `no-drag` and asks the host to re-collect the drag regions after expanding, moving, resizing, or a data change; it takes effect after upgrading the plugin and reloading the client. |
+| The panel stays expanded after the mouse leaves | Keep-expanded is on; click the square-frame arrow button (filled means on) to release it. |
+| The panel is too narrow/tall, or resizing does nothing | The size is limited to between 200×120 and 480×520 and never exceeds the viewport; drag the bottom-right handle, or focus it and use the arrow keys. Clearing `opencode-go-live.overlay.size` restores the default width and content-driven height. |
+| The position or pinned state is wrong | These preferences live in the browser's `localStorage` (keys `opencode-go-live.overlay.*`); clear them to restore the defaults (bottom-right, unpinned, not kept expanded, default size). |
 | The overlay reports a missing API key | The card has no saved key yet, or this profile uses a different credential reference; enter and apply the key in the card. |
 | The overlay reports no OpenCode Go subscription | Upstream answered 403, meaning the key's account has no Go subscription (the Zen prepaid balance is outside this panel's scope). |
 | The overlay reports a failed query | The host cannot reach `https://opencode.ai/zen/go/v1/usage`, or upstream has moved that endpoint; model calls are unaffected — check against the endpoint note above. |

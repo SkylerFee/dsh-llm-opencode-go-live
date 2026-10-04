@@ -8,9 +8,29 @@ window.__ModuleLoader__.load({
     const ROUTE = 'opencode-go-live'
     /** 与 src/index.ts 的 BALANCE_ROUTE_PATH 平行定义：client bundle 无法 import 插件源码。 */
     const BALANCE_ROUTE = '/api/opencode-go-live/balance'
-    // 悬浮窗的纯界面偏好（位置、固定、最小化）留在浏览器本地；是否展示由插件配置决定。
+    // 悬浮窗的纯界面偏好（位置、固定、固定展开、尺寸）留在浏览器本地；是否展示由插件配置决定。
     const OVERLAY_POS_KEY = 'opencode-go-live.overlay.pos'
     const OVERLAY_PINNED_KEY = 'opencode-go-live.overlay.pinned'
+    const OVERLAY_EXPANDED_KEY = 'opencode-go-live.overlay.expanded'
+    const OVERLAY_SIZE_KEY = 'opencode-go-live.overlay.size'
+    /** 展开面板的尺寸边界：低于最小尺寸内容读不全，高于最大尺寸会盖住整个帧。 */
+    const OVERLAY_DEFAULT_WIDTH = 264
+    const OVERLAY_MIN_WIDTH = 200
+    const OVERLAY_MIN_HEIGHT = 120
+    const OVERLAY_MAX_WIDTH = 480
+    const OVERLAY_MAX_HEIGHT = 520
+    /** 尺寸上限相对视口保留的边距，保证悬浮窗拖到角落时仍有可抓的边。 */
+    const OVERLAY_VIEWPORT_MARGIN = 24
+    /** 单次键盘调整的步长。 */
+    const OVERLAY_RESIZE_STEP = 16
+    /**
+     * 宿主在 macOS 上用来强制 Electron 重算窗口拖拽区的标记属性
+     * （ui-web 的 `window-drag/recall.ts`：只在 app-region 计算值变化时重新收集拖拽矩形）。
+     * client bundle 无法 import 宿主模块，这里按值平行定义。
+     */
+    const WINDOW_DRAG_RECALL_ATTR = 'data-window-drag-recall'
+    /** 同一时刻只允许一次重算脉冲，避免连续拖动时每帧重复写属性。 */
+    let overlayRecallPending = false
     /** 上游按 key 限流，自动刷新保持低频。 */
     const OVERLAY_REFRESH_MS = 300_000
     const MANUAL_REFRESH_THROTTLE_MS = 10_000
@@ -40,11 +60,22 @@ window.__ModuleLoader__.load({
       background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: 12,
     }
     const overlayStyle = {
-      width: 264, padding: '10px 12px',
+      position: 'relative', boxSizing: 'border-box', padding: '10px 12px',
       display: 'grid', gap: 8, fontSize: 12, userSelect: 'none', touchAction: 'none',
       border: '0.5px solid var(--dsw-alias-border-l3)', borderRadius: 12,
       background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)',
-      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.16)',
+      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.16)', overflow: 'hidden',
+    }
+    /** 面板内容区：高度固定时只有它滚动，标题行与调整手柄始终留在原处。 */
+    const overlayBodyStyle = {
+      display: 'grid', gap: 8, alignContent: 'start', minHeight: 0, overflow: 'auto',
+    }
+    /** 右下角调整手柄：面板大小可变，但被钳制在最小与最大尺寸之间。 */
+    const overlayResizeHandleStyle = {
+      position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, padding: 0,
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+      border: 0, background: 'transparent', color: 'var(--dsw-alias-label-tertiary)',
+      cursor: 'nwse-resize', touchAction: 'none',
     }
     const overlayTitleStyle = {
       display: 'flex', alignItems: 'center', gap: 6, cursor: 'grab', touchAction: 'none',
@@ -79,6 +110,7 @@ window.__ModuleLoader__.load({
         overlayTitle: 'OpenCode Go 用量', closeOverlay: '关闭用量面板', refresh: '刷新',
         restoreOverlay: '展开用量面板',
         pinOverlay: '固定位置', unpinOverlay: '解除固定',
+        pinExpandOverlay: '固定展开', unpinExpandOverlay: '取消固定展开', resizeOverlay: '调整面板大小',
         chipTitle: 'Go', chipPending: '…', chipFailed: '⚠',
         windowRolling: '5 小时', windowWeekly: '本周', windowMonthly: '本月',
         loading: '加载中…', updatedAtPrefix: '更新于',
@@ -96,6 +128,7 @@ window.__ModuleLoader__.load({
         overlayTitle: 'OpenCode Go usage', closeOverlay: 'Close usage panel', refresh: 'Refresh',
         restoreOverlay: 'Expand usage panel',
         pinOverlay: 'Pin position', unpinOverlay: 'Unpin position',
+        pinExpandOverlay: 'Keep expanded', unpinExpandOverlay: 'Stop keeping expanded', resizeOverlay: 'Resize panel',
         chipTitle: 'Go', chipPending: '…', chipFailed: '⚠',
         windowRolling: '5-hour', windowWeekly: 'This week', windowMonthly: 'This month',
         loading: 'Loading…', updatedAtPrefix: 'Updated',
@@ -133,6 +166,68 @@ window.__ModuleLoader__.load({
       try { window.localStorage.setItem(key, value ? '1' : '0') } catch { /* 忽略不可写存储 */ }
     }
 
+    /**
+     * 请求宿主重算窗口拖拽区。
+     * 悬浮窗锚点声明 `no-drag` 只是把自己从窗口拖拽几何里减掉；Electron 只在
+     * app-region 计算值发生变化时才重新收集拖拽矩形，因此展开、移动、调整大小
+     * 之后必须补一次标记脉冲（先写后清即两次计算值变化），否则新几何仍按旧
+     * 拖拽行命中，拖动悬浮窗会拖走整个窗口。
+     */
+    function pulseWindowDragRecall() {
+      if (typeof document === 'undefined' || document === null) return
+      const root = document.documentElement
+      const body = document.body
+      if (!root || !body || !root.dataset || root.dataset.platform !== 'darwin') return
+      if (overlayRecallPending) return
+      overlayRecallPending = true
+      body.setAttribute(WINDOW_DRAG_RECALL_ATTR, '')
+      const clear = () => {
+        overlayRecallPending = false
+        body.removeAttribute(WINDOW_DRAG_RECALL_ATTR)
+      }
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(clear)
+      else if (typeof setTimeout === 'function') setTimeout(clear, 0)
+      else clear()
+    }
+
+    /**
+     * 尺寸上限：视口收窄时上限随之下调（拖到角落仍留有可抓的边），但不得低于
+     * 最小值，否则钳制区间反转。
+     */
+    function overlayMaxSize() {
+      const viewportWidth = typeof window.innerWidth === 'number' ? window.innerWidth : 0
+      const viewportHeight = typeof window.innerHeight === 'number' ? window.innerHeight : 0
+      return {
+        width: Math.max(OVERLAY_MIN_WIDTH, Math.min(OVERLAY_MAX_WIDTH, (viewportWidth || OVERLAY_MAX_WIDTH) - OVERLAY_VIEWPORT_MARGIN)),
+        height: Math.max(OVERLAY_MIN_HEIGHT, Math.min(OVERLAY_MAX_HEIGHT, (viewportHeight || OVERLAY_MAX_HEIGHT) - OVERLAY_VIEWPORT_MARGIN)),
+      }
+    }
+
+    /** 把任意尺寸收敛到 [最小尺寸, min(最大尺寸, 视口可容纳)]，并取整。 */
+    function clampOverlaySize(size) {
+      const max = overlayMaxSize()
+      return {
+        width: Math.round(Math.min(Math.max(OVERLAY_MIN_WIDTH, size.width), max.width)),
+        height: Math.round(Math.min(Math.max(OVERLAY_MIN_HEIGHT, size.height), max.height)),
+      }
+    }
+
+    /** 读取展开尺寸偏好；缺失或非法时返回 null，面板按默认宽度与内容高度自适应。 */
+    function readOverlaySize() {
+      try {
+        const raw = window.localStorage.getItem(OVERLAY_SIZE_KEY)
+        if (raw === null) return null
+        const parsed = JSON.parse(raw)
+        if (!isRecord(parsed) || !Number.isFinite(parsed.width) || !Number.isFinite(parsed.height)) return null
+        return clampOverlaySize(parsed)
+      } catch { /* 尺寸只是偏好，读取失败回到默认宽度与自适应高度 */ return null }
+    }
+
+    /** 写入展开尺寸偏好；存储不可用只影响持久性。 */
+    function writeOverlaySize(size) {
+      try { window.localStorage.setItem(OVERLAY_SIZE_KEY, JSON.stringify(size)) } catch { /* 忽略不可写存储 */ }
+    }
+
     /** 固定图标：已固定为实心图钉，未固定为空心图钉。 */
     function pinIcon(filled) {
       return h('svg', {
@@ -146,6 +241,34 @@ window.__ModuleLoader__.load({
       }),
       h('path', {
         d: 'M12 13.5V21', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round',
+      }))
+    }
+
+    /** 固定展开图标：已固定展开为实心方框内箭头，未固定为空心方框内箭头。 */
+    function expandIcon(filled) {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false',
+        style: { display: 'block' },
+      },
+      h('rect', {
+        x: 3.5, y: 3.5, width: 17, height: 17, rx: 4,
+        fill: filled ? 'currentColor' : 'none', stroke: 'currentColor', strokeWidth: 1.6,
+      }),
+      h('path', {
+        d: 'M9 15L15 9M10.5 9H15V13.5', fill: 'none',
+        stroke: filled ? 'var(--dsw-alias-bg-layer-1)' : 'currentColor',
+        strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round',
+      }))
+    }
+
+    /** 调整大小手柄的矢量标记：右下角两条斜线。 */
+    function resizeIcon() {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 12 12', 'aria-hidden': 'true', focusable: 'false',
+        style: { display: 'block' },
+      },
+      h('path', {
+        d: 'M11 5L5 11M11 9L9 11', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round',
       }))
     }
 
@@ -376,8 +499,9 @@ window.__ModuleLoader__.load({
 
         /**
          * 帧级悬浮用量面板。
-         * 展示与否由插件配置决定（未配置即默认开启）；位置、固定、最小化是浏览器本地界面偏好。
-         * 关闭按钮写入插件配置，模型页开关通过 settings/document-updated 事件同步关闭。
+         * 展示与否由插件配置决定（未配置即默认开启）；位置、固定位置、固定展开与
+         * 展开尺寸是浏览器本地界面偏好。关闭按钮写入插件配置，模型页开关通过
+         * settings/document-updated 事件同步关闭。
          */
         function BalanceOverlay({ t }) {
           // null 表示配置尚未读到：此时既不渲染也不查询，避免开关关闭时闪现面板。
@@ -385,14 +509,21 @@ window.__ModuleLoader__.load({
           const [envelope, setEnvelope] = React.useState(null)
           // 徽章是默认形态；鼠标悬浮时展开完整面板，移开自动收起。
           const [hovered, setHovered] = React.useState(false)
-          // 拖拽期间即使指针越过锚点边界也不收起，否则拖到视口边缘会突然变成徽章。
+          // 拖拽与调整大小期间即使指针越过锚点边界也不收起，否则拖到视口边缘会突然变成徽章。
           const [dragging, setDragging] = React.useState(false)
+          const [resizing, setResizing] = React.useState(false)
           const [pinned, setPinned] = React.useState(() => readFlag(OVERLAY_PINNED_KEY))
+          // 固定展开：不移开鼠标也保持完整面板；关闭后回到「悬浮展开、移开收起」。
+          const [expandPinned, setExpandPinned] = React.useState(() => readFlag(OVERLAY_EXPANDED_KEY))
+          // null 表示未调整过：宽度取默认值、高度随内容自适应。
+          const [size, setSize] = React.useState(() => readOverlaySize())
           const [pos, setPos] = React.useState(null)
           const [nonce, setNonce] = React.useState(0)
           const [lastQueryAt, setLastQueryAt] = React.useState(0)
           const [saving, setSaving] = React.useState(false)
           const [writeError, setWriteError] = React.useState('')
+          // 展开形态：鼠标悬浮时临时展开，固定展开则不看指针位置持续保持完整面板。
+          const expanded = hovered || expandPinned
 
           React.useEffect(() => {
             let active = true
@@ -403,6 +534,9 @@ window.__ModuleLoader__.load({
               const next = await readOverlayEnabled(ctx)
               if (!active || current !== generation) return
               setEnabled(next)
+              // 隐藏期间不残留悬浮态：锚点已卸载，mouseleave 不会再补上，
+              // 否则重新打开开关时面板会停在展开形态而「固定展开」图标显示未固定。
+              if (next !== true) setHovered(false)
             }
             void refreshEnabled()
             const disposers = [
@@ -436,6 +570,13 @@ window.__ModuleLoader__.load({
             }
           }, [enabled, nonce])
 
+          /**
+           * 展开形态、位置、尺寸与数据（行数变化会改变面板高度）都会改变锚点几何
+           * （也就是被减除的 no-drag 区域）。Electron 只在 app-region 计算值变化时
+           * 重算拖拽区，所以每次几何变化都补一次脉冲。
+           */
+          React.useEffect(() => { pulseWindowDragRecall() }, [expanded, pos, size, envelope])
+
           /** 手动刷新按节流窗口放行，避免连点打满上游限流。 */
           function requestRefresh() {
             const now = Date.now()
@@ -466,6 +607,16 @@ window.__ModuleLoader__.load({
             const next = !pinned
             setPinned(next)
             writeFlag(OVERLAY_PINNED_KEY, next)
+          }
+
+          /**
+           * 固定展开：打开后指针移开也保持完整面板，关闭后回到悬浮展开、移开收起。
+           * 不触碰 `hovered`：指针仍在悬浮窗上时关闭固定展开会保持展开，直到指针移出。
+           */
+          function toggleExpandPinned() {
+            const next = !expandPinned
+            setExpandPinned(next)
+            writeFlag(OVERLAY_EXPANDED_KEY, next)
           }
 
           /** 标题栏按钮上的 pointerdown 不得冒泡成拖拽。 */
@@ -530,11 +681,100 @@ window.__ModuleLoader__.load({
             } catch { /* 位置只是偏好，读取失败保持默认 */ }
           }, [])
 
+          /**
+           * 调整大小的起始尺寸。未调整过时取默认宽度与面板实测高度：面板是
+           * `box-sizing: border-box`，实测矩形与随后写入的宽高在同一坐标系，
+           * 因此开始拖动不会跳变。
+           */
+          function resizeOrigin(event) {
+            if (size !== null) return { width: size.width, height: size.height }
+            const panelElement = event.currentTarget && event.currentTarget.offsetParent
+            const panelRect = panelElement && typeof panelElement.getBoundingClientRect === 'function'
+              ? panelElement.getBoundingClientRect() : null
+            return {
+              width: OVERLAY_DEFAULT_WIDTH,
+              height: panelRect && Number.isFinite(panelRect.height) ? panelRect.height : OVERLAY_MIN_HEIGHT,
+            }
+          }
+
+          /**
+           * 调整展开面板大小。
+           * 手柄绑定在面板右下角，其 `pointerdown` 必须阻止冒泡，否则会同时触发锚点的移动拖拽。
+           * 位移经 `clampOverlaySize` 收敛到最小与最大尺寸之间；手柄自身的拖动被记录，
+           * 拖拽区重算由几何副作用统一补。
+           */
+          function startResize(event) {
+            stopDrag(event)
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            const start = resizeOrigin(event)
+            const startX = event.clientX
+            const startY = event.clientY
+            let latest = clampOverlaySize(start)
+            setResizing(true)
+            const move = moveEvent => {
+              latest = clampOverlaySize({
+                width: start.width + moveEvent.clientX - startX,
+                height: start.height + moveEvent.clientY - startY,
+              })
+              setSize(latest)
+            }
+            const finish = () => {
+              setResizing(false)
+              setSize(latest)
+              writeOverlaySize(latest)
+              window.removeEventListener('pointermove', move)
+              window.removeEventListener('pointerup', finish)
+            }
+            window.addEventListener('pointermove', move)
+            window.addEventListener('pointerup', finish)
+          }
+
+          /** 键盘调整大小：方向键各按一个步长收放，与鼠标调整共用同一套起始尺寸与边界钳制。 */
+          function resizeFromKeyboard(event) {
+            const delta = {
+              ArrowLeft: { width: -OVERLAY_RESIZE_STEP, height: 0 },
+              ArrowRight: { width: OVERLAY_RESIZE_STEP, height: 0 },
+              ArrowUp: { width: 0, height: -OVERLAY_RESIZE_STEP },
+              ArrowDown: { width: 0, height: OVERLAY_RESIZE_STEP },
+            }[event.key]
+            if (delta === undefined) return
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            const origin = resizeOrigin(event)
+            const next = clampOverlaySize({
+              width: origin.width + delta.width,
+              height: origin.height + delta.height,
+            })
+            setSize(next)
+            writeOverlaySize(next)
+          }
+
           if (enabled !== true) return null
 
           // 锚点常驻并承载悬浮判定与整块拖拽：徽章与面板互为内层内容，
           // 切换内容不会重建锚点，因此不会反复触发 mouseleave 造成抖动。
-          const anchorStyle = { position: 'absolute', ...(pos === null ? { right: 16, bottom: 16 } : { left: pos.x, top: pos.y }) }
+          // 窗口拖拽区减除有两道保险：
+          // ① `tabIndex: -1` 让锚点命中宿主 base.css 的交互元素规则
+          //    （`html[data-platform=darwin] :is(…,[tabindex],…){-webkit-app-region:no-drag}`，
+          //    属性选择器不看取值，-1 因此不进 Tab 顺序）——这是宿主自己维护的机制，最可靠；
+          // ② 内联声明两种拼写，避免依赖具体的 CSSOM 别名（不同引擎只暴露其中一种）。
+          // 宿主按几何而非层级合成拖拽区：悬浮窗移到顶部与对话头、侧栏 logo 行重叠时，
+          // 若不减除，按下拖动会变成拖动整个窗口。
+          const anchorStyle = {
+            position: 'absolute', WebkitAppRegion: 'no-drag', webkitAppRegion: 'no-drag',
+            ...(pos === null ? { right: 16, bottom: 16 } : { left: pos.x, top: pos.y }),
+          }
+          const anchorProps = {
+            style: anchorStyle, tabIndex: -1,
+            onMouseEnter: () => setHovered(true),
+            onMouseLeave: () => { if (!dragging && !resizing) setHovered(false) },
+            onPointerDown: startDrag,
+          }
+          // 展开尺寸：未调整过宽度取默认值、高度随内容自适应；调整过则两者都用存储值。
+          const panelStyle = {
+            ...overlayStyle,
+            width: size === null ? OVERLAY_DEFAULT_WIDTH : size.width,
+            ...(size === null ? {} : { height: size.height, gridTemplateRows: 'auto minmax(0, 1fr)' }),
+          }
           const rolling = envelope !== null && envelope.ok === true ? envelope.usage.rolling : undefined
           const rollingPercent = isRecord(rolling) && typeof rolling.percent === 'number'
             ? Math.min(100, Math.max(0, Math.round(rolling.percent)))
@@ -548,15 +788,20 @@ window.__ModuleLoader__.load({
             title: t(pinned ? 'unpinOverlay' : 'pinOverlay'), 'aria-label': t(pinned ? 'unpinOverlay' : 'pinOverlay'),
             onClick: togglePinned,
           }, pinIcon(pinned))
-
-          if (!hovered) {
-            // 徽章：5 小时窗口的进度条与用量百分比 + 固定按钮；整块可拖，鼠标进入即展开。
-            return h('div', {
-              style: anchorStyle,
-              onMouseEnter: () => setHovered(true),
-              onMouseLeave: () => { if (!dragging) setHovered(false) },
-              onPointerDown: startDrag,
+          const expandButton = h('button', {
+            type: 'button', 'aria-pressed': expandPinned, onPointerDown: stopDrag,
+            style: {
+              ...overlayIconButtonStyle,
+              color: expandPinned ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-secondary)',
             },
+            title: t(expandPinned ? 'unpinExpandOverlay' : 'pinExpandOverlay'),
+            'aria-label': t(expandPinned ? 'unpinExpandOverlay' : 'pinExpandOverlay'),
+            onClick: toggleExpandPinned,
+          }, expandIcon(expandPinned))
+
+          if (!expanded) {
+            // 徽章：5 小时窗口的进度条与用量百分比 + 固定展开与固定位置按钮；整块可拖，鼠标进入即展开。
+            return h('div', anchorProps,
             h('div', { 'data-opencode-go-live-overlay': 'chip', style: chipStyle },
               h('button', {
                 type: 'button', style: chipMainStyle, title: t('restoreOverlay'), 'aria-label': t('restoreOverlay'),
@@ -572,6 +817,7 @@ window.__ModuleLoader__.load({
                 rollingPercent === null
                   ? t(envelope !== null && envelope.ok === false ? 'chipFailed' : 'chipPending')
                   : `${rollingPercent}%`)),
+              expandButton,
               pinButton))
           }
 
@@ -594,19 +840,15 @@ window.__ModuleLoader__.load({
             ? new Date(envelope.checkedAt).toLocaleTimeString()
             : null
 
-          return h('div', {
-            style: anchorStyle,
-            onMouseEnter: () => setHovered(true),
-            onMouseLeave: () => { if (!dragging) setHovered(false) },
-            onPointerDown: startDrag,
-          },
+          return h('div', anchorProps,
           h('section', {
             role: 'region', 'aria-label': t('overlayTitle'),
             'data-opencode-go-live-overlay': 'panel',
-            style: overlayStyle,
+            style: panelStyle,
           },
           h('div', { style: overlayTitleStyle },
             h('span', { style: { flex: 1 } }, t('overlayTitle')),
+            expandButton,
             pinButton,
             h('button', {
               type: 'button', onPointerDown: stopDrag,
@@ -618,18 +860,26 @@ window.__ModuleLoader__.load({
               style: overlayIconButtonStyle, title: t('closeOverlay'), 'aria-label': t('closeOverlay'),
               onClick: closeOverlay,
             }, '×')),
-          failed
-            ? h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)' } },
-              t(Object.hasOwn(errorKeys, envelope.code) ? errorKeys[envelope.code] : 'errorUnknown'))
-            : rows.length === 0
-              ? h('div', { style: { color: 'var(--dsw-alias-label-secondary)' } }, t('loading'))
-              : rows,
-          writeError
-            ? h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: 11 } }, writeError)
-            : null,
-          checked === null
-            ? null
-            : h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } }, `${t('updatedAtPrefix')} ${checked}`)))
+          h('div', { style: overlayBodyStyle },
+            failed
+              ? h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)' } },
+                t(Object.hasOwn(errorKeys, envelope.code) ? errorKeys[envelope.code] : 'errorUnknown'))
+              : rows.length === 0
+                ? h('div', { style: { color: 'var(--dsw-alias-label-secondary)' } }, t('loading'))
+                : rows,
+            writeError
+              ? h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: 11 } }, writeError)
+              : null,
+            checked === null
+              ? null
+              : h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } }, `${t('updatedAtPrefix')} ${checked}`)),
+          h('div', {
+            role: 'separator', tabIndex: 0,
+            'data-opencode-go-live-overlay': 'resize',
+            'aria-label': t('resizeOverlay'), title: t('resizeOverlay'),
+            onPointerDown: startResize, onKeyDown: resizeFromKeyboard,
+            style: overlayResizeHandleStyle,
+          }, resizeIcon())))
         }
 
         ctx.slots.inject('settings.models.footer', () => ctx.slots.register({

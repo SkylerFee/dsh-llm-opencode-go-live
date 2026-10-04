@@ -11,11 +11,20 @@ const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve)
  * 浏览器全局替身。
  * client bundle 的 factory 在 `node:vm` 上下文里执行，因此 fetch、AbortController
  * 与定时器都必须显式注入；存储只保留在内存中。
+ * `document` 桩提供宿主窗口拖拽区重算所需的 html 平台标记与 body 属性读写。
  */
-function browserSandbox(options: { response?: () => Promise<Response> } = {}) {
-  const stored = new Map<string, string>()
+function browserSandbox(options: {
+  response?: () => Promise<Response>
+  /** html 的平台标记；默认 darwin（Electron 桌面端）。 */
+  platform?: string
+  /** 预置的 localStorage 内容，用于验证偏好跨挂载恢复。 */
+  seed?: Record<string, string>
+} = {}) {
+  const stored = new Map<string, string>(Object.entries(options.seed ?? {}))
   const session = new Map<string, string>()
   const windowListeners = new Map<string, ((event: any) => void)[]>()
+  const bodyAttributes = new Map<string, string>()
+  const frames: (() => void)[] = []
   const sandbox: Record<string, any> = {
     window: {
       innerWidth: 1280,
@@ -30,11 +39,22 @@ function browserSandbox(options: { response?: () => Promise<Response> } = {}) {
         setItem: (key: string, value: string) => { session.set(key, value) },
         removeItem: (key: string) => { session.delete(key) },
       },
+      requestAnimationFrame(callback: () => void) {
+        frames.push(callback)
+        return frames.length
+      },
       addEventListener(type: string, handler: (event: any) => void) {
         windowListeners.set(type, [...windowListeners.get(type) ?? [], handler])
       },
       removeEventListener(type: string, handler: (event: any) => void) {
         windowListeners.set(type, (windowListeners.get(type) ?? []).filter(item => item !== handler))
+      },
+    },
+    document: {
+      documentElement: { dataset: { platform: options.platform ?? 'darwin' } },
+      body: {
+        setAttribute: (name: string, value: string) => { bodyAttributes.set(name, value) },
+        removeAttribute: (name: string) => { bodyAttributes.delete(name) },
       },
     },
     fetch: options.response ?? (async () => new Response('{}', { status: 200 })),
@@ -46,6 +66,9 @@ function browserSandbox(options: { response?: () => Promise<Response> } = {}) {
     sandbox,
     stored,
     session,
+    bodyAttributes,
+    /** 执行已排队的动画帧回调：重算脉冲的清除动作就在其中。 */
+    flushFrames: () => { for (const frame of frames.splice(0)) frame() },
     /** 派发一次 window 事件，供拖拽等真实监听路径使用。 */
     dispatchWindow: (type: string, event: any) => {
       for (const handler of windowListeners.get(type) ?? []) handler(event)
@@ -309,6 +332,10 @@ async function mountOverlay(options: {
   /** 为 true 时宿主描述里不出现该字段，用于验证「未配置即默认开启」。 */
   omitOverlayField?: boolean
   response?: () => Promise<Response>
+  /** html 的平台标记；默认 darwin。 */
+  platform?: string
+  /** 预置 localStorage，用于验证位置、固定与尺寸偏好跨挂载恢复。 */
+  seed?: Record<string, string>
 }) {
   let registration: { id: string; factory: (require: (name: string) => unknown) => any } | undefined
   const client = await readFile(new URL('../client.js', import.meta.url), 'utf8')
@@ -373,6 +400,8 @@ async function mountOverlay(options: {
     dictionary,
     stored: browser.stored,
     session: browser.session,
+    bodyAttributes: browser.bodyAttributes,
+    flushFrames: browser.flushFrames,
     mutations,
     addedListeners,
     render: () => harness.render(component!, { t: (key: string) => dictionary[key]! }),
@@ -525,6 +554,13 @@ test('关闭按钮写入配置同步关闭模型页开关，重新打开开关�
     overlay.setOverlayEnabled(true)
     overlay.emitSettingsChange()
     await settle()
+    // 隐藏期间不残留悬浮态：指针从未移出过，重新打开也必须先显示徽章
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
+      '重新打开开关时必须回到徽章形态，而不是停在展开面板',
+    )
+    overlay.hover()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'))
     overlay.unhover()
     assert.ok(
       find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
@@ -553,7 +589,7 @@ test('徽章显示五小时进度条与用量百分比，固定按钮默认不�
     assert.equal(track?.props.style.width, 56)
     assert.ok(find(track, node => node.props?.style?.width === '38%'))
     assert.ok(find(chip, node => node.type === 'span' && node.children[0] === '38%'))
-    // 徽章只保留主体与固定按钮：最小化按钮已被悬浮展开取代
+    // 徽章保留主体、固定展开与固定位置三个按钮：最小化按钮已被悬浮展开取代
     const chipButtons: Element[] = []
     const collectButtons = (node: unknown): void => {
       if (Array.isArray(node)) { node.forEach(collectButtons); return }
@@ -565,7 +601,7 @@ test('徽章显示五小时进度条与用量百分比，固定按钮默认不�
     collectButtons(chip)
     assert.deepEqual(
       chipButtons.map(button => button.props['aria-label']).sort(),
-      [overlay.dictionary.pinOverlay, overlay.dictionary.restoreOverlay].sort(),
+      [overlay.dictionary.pinOverlay, overlay.dictionary.pinExpandOverlay, overlay.dictionary.restoreOverlay].sort(),
     )
 
     // 默认不固定：空心图标
@@ -637,5 +673,166 @@ test('徽章与面板拖拽受固定状态门控，拖动后的点击不触发�
     assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
   } finally {
     overlay.restore()
+  }
+})
+
+/** 新增用例共用的成功响应替身：只有 5 小时窗口，已用 37.5%。 */
+const rollingOnly = async (): Promise<Response> => new Response(JSON.stringify({
+  ok: true,
+  checkedAt: new Date().toISOString(),
+  usage: { rolling: { status: 'ok', percent: 37.5, resetsAt: new Date(Date.now() + 3600_000).toISOString() } },
+}), { status: 200, headers: { 'content-type': 'application/json' } })
+
+test('悬浮窗锚点从窗口拖拽几何中减除，并在几何变化后请求重算拖拽区', async () => {
+  // 宿主按几何（而非层级）合成 Electron 的 app-region：悬浮窗移到顶部与
+  // `data-window-drag` 行重叠时，不在锚点上声明 no-drag 就会拖动整个窗口。
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    const anchor = overlay.anchor(overlay.render())
+    // 宿主 base.css 的交互元素规则带 [tabindex]：-1 让整块锚点命中它，且不进 Tab 顺序
+    assert.equal(anchor.props.tabIndex, -1, '锚点必须带 tabindex，才能命中宿主 [tabindex] 的 no-drag 规则')
+    // 内联声明两种拼写：不同引擎只暴露其中一种 CSSOM 别名
+    assert.equal(anchor.props.style.WebkitAppRegion, 'no-drag', '锚点必须把悬浮窗从窗口拖拽几何中减除')
+    assert.equal(anchor.props.style.webkitAppRegion, 'no-drag')
+
+    // Electron 只在 app-region 计算值变化时重算拖拽矩形，展开与移动后必须补一次脉冲
+    assert.equal(overlay.bodyAttributes.get('data-window-drag-recall'), '', '挂载后必须请求重算拖拽区')
+    overlay.flushFrames()
+    assert.equal(overlay.bodyAttributes.has('data-window-drag-recall'), false, '脉冲必须在下一次重算后清除')
+
+    overlay.hover()
+    overlay.render()
+    assert.equal(overlay.bodyAttributes.get('data-window-drag-recall'), '', '展开改变几何后必须重新请求重算')
+    overlay.flushFrames()
+  } finally {
+    overlay.restore()
+  }
+
+  // 非 darwin 平台没有窗口拖拽行（Windows 的标题栏在 frame 之外），不得写宿主标记
+  const web = await mountOverlay({ platform: 'win32', response: rollingOnly })
+  try {
+    await web.ready()
+    assert.equal(web.bodyAttributes.has('data-window-drag-recall'), false)
+  } finally {
+    web.restore()
+  }
+})
+
+test('固定展开按钮让完整面板保持展开，关闭后回到悬浮收起', async () => {
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    // 默认未固定展开：空心图标，且不写 localStorage
+    const expand = find(overlay.render(), node =>
+      node.type === 'button' && node.props['aria-label'] === overlay.dictionary.pinExpandOverlay)!
+    assert.equal(expand.props['aria-pressed'], false)
+    assert.equal(find(expand, node => node.type === 'rect')?.props.fill, 'none')
+    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded') ?? null, null)
+
+    // 点击后立即展开；指针移开仍保持完整面板
+    expand.props.onClick()
+    let tree = overlay.render()
+    assert.ok(find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel'))
+    assert.equal(find(tree, node => node.props['data-opencode-go-live-overlay'] === 'chip'), undefined)
+    overlay.unhover()
+    tree = overlay.render()
+    assert.ok(
+      find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel'),
+      '固定展开后移开鼠标不得收起为徽章',
+    )
+    const pinned = find(tree, node =>
+      node.type === 'button' && node.props['aria-label'] === overlay.dictionary.unpinExpandOverlay)!
+    assert.equal(pinned.props['aria-pressed'], true)
+    assert.equal(find(pinned, node => node.type === 'rect')?.props.fill, 'currentColor')
+    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded'), '1')
+
+    // 取消固定展开且指针不在悬浮窗上：回到徽章
+    pinned.props.onClick()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
+    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded'), '0')
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('展开面板可调整大小并受最小与最大尺寸限制，尺寸跨挂载保持', async () => {
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    overlay.hover()
+    let tree = overlay.render()
+    let panel = find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 264, '默认宽度')
+    assert.equal(panel.props.style.height, undefined, '未调整过时高度随内容自适应')
+    // 边框盒尺寸：写入的宽高与 getBoundingClientRect 同一坐标系，开始调整大小不跳变
+    assert.equal(panel.props.style.boxSizing, 'border-box')
+
+    // 手柄按下必须阻止冒泡：否则会同时触发锚点的移动拖拽
+    let stopped = false
+    const handle = find(tree, node => node.props['data-opencode-go-live-overlay'] === 'resize')!
+    assert.equal(handle.props['aria-label'], overlay.dictionary.resizeOverlay)
+    handle.props.onPointerDown({
+      clientX: 300, clientY: 300,
+      currentTarget: { offsetParent: { getBoundingClientRect: () => ({ width: 264, height: 100 }) } },
+      stopPropagation: () => { stopped = true }, preventDefault() {},
+    })
+    assert.equal(stopped, true)
+    assert.equal(overlay.windowListenerCount('pointermove'), 1, '调整大小只注册自己的监听')
+
+    // 拖动 60×40 → 尺寸同步变化
+    overlay.dispatchWindow('pointermove', { clientX: 360, clientY: 340 })
+    panel = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 324)
+    assert.equal(panel.props.style.height, 140)
+
+    // 调整期间指针移出锚点不得收起
+    overlay.unhover()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'))
+
+    // 上限：视口内的最大尺寸
+    overlay.dispatchWindow('pointermove', { clientX: 3000, clientY: 3000 })
+    panel = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 480)
+    assert.equal(panel.props.style.height, 520)
+
+    // 下限：不得小于最小尺寸
+    overlay.dispatchWindow('pointermove', { clientX: -3000, clientY: -3000 })
+    panel = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 200)
+    assert.equal(panel.props.style.height, 120)
+
+    overlay.dispatchWindow('pointerup', {})
+    assert.equal(overlay.windowListenerCount('pointermove'), 0, '调整结束必须移除监听')
+    assert.deepEqual(
+      JSON.parse(overlay.stored.get('opencode-go-live.overlay.size')!),
+      { width: 200, height: 120 },
+    )
+  } finally {
+    overlay.restore()
+  }
+
+  // 越界的历史尺寸在挂载时收敛到边界内，键盘调整同样受钳制
+  const restored = await mountOverlay({
+    response: rollingOnly,
+    seed: { 'opencode-go-live.overlay.size': JSON.stringify({ width: 9999, height: 5 }) },
+  })
+  try {
+    await restored.ready()
+    restored.hover()
+    let panel = find(restored.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 480, '越界宽度按最大尺寸收敛')
+    assert.equal(panel.props.style.height, 120, '越界高度按最小尺寸收敛')
+
+    const handle = find(restored.render(), node => node.props['data-opencode-go-live-overlay'] === 'resize')!
+    handle.props.onKeyDown({ key: 'ArrowLeft', preventDefault() {} })
+    panel = find(restored.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
+    assert.equal(panel.props.style.width, 464)
+    assert.deepEqual(
+      JSON.parse(restored.stored.get('opencode-go-live.overlay.size')!),
+      { width: 464, height: 120 },
+    )
+  } finally {
+    restored.restore()
   }
 })
