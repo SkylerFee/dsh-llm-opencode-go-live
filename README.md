@@ -2,13 +2,13 @@
 
 English | [中文](README.zh.md)
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.1](https://img.shields.io/badge/release-v0.2.1-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.2](https://img.shields.io/badge/release-v0.2.2-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
 
 An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, contributes its own Models settings card, and uses pi-ai for model requests. The built-in `opencode-go` route remains available. A switch in that card renders the OpenCode Go subscription usage in a frame-wide floating panel.
 
 ## Quick Start
 
-Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1` — the image-input hooks it wires in ship in those versions. The host must also provide `@earendil-works/pi-ai` `^0.87.1`: DSH resolves this peer to the host's pi-ai at runtime, including linked source installs. The plugin keeps pi-ai `0.87.1` as a development dependency for its own build and tests.
+Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`. Every range carries an explicit prerelease branch: node-semver admits a prerelease only against a comparator on the same `major.minor.patch` tuple, so a range without one silently excludes every prerelease build of the harness. The image-input hooks it wires in ship in those versions. The host must also provide `@earendil-works/pi-ai` `^0.87.1`: DSH resolves this peer to the host's pi-ai at runtime, including linked source installs. The plugin keeps pi-ai `0.87.1` as a development dependency for its own build and tests.
 
 Install from npm (recommended) into the Web profile with the installed `dsh` CLI:
 
@@ -16,7 +16,7 @@ Install from npm (recommended) into the Web profile with the installed `dsh` CLI
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-This installs the npm `latest` tag. To follow prereleases, append `@alpha`; to pin this release, append `@0.2.1`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
+This installs the npm `latest` tag. To follow prereleases, append `@alpha`; to pin this release, append `@0.2.2`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
 
 Installing the package and enabling it from the Web client's plugin page:
 

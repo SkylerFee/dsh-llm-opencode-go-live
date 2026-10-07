@@ -36,6 +36,9 @@ importers:
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.4
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       tsx:
         specifier: ^4.22.4
         version: 4.23.15
