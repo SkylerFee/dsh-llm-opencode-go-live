@@ -2,13 +2,13 @@
 
 [English](README.md) | 中文
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.1](https://img.shields.io/badge/release-v0.2.1-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.2](https://img.shields.io/badge/release-v0.2.2-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
 
 DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev 更新 `opencode-go` 模型列表，注册独立的 `opencode-go-live` 路由，并由插件自己的浏览器入口在 Models 页显示供应商、密钥和动态模型；复用 pi-ai 处理模型请求；内置 `opencode-go` 路由不受影响。供应商卡片内的开关可以在帧级悬浮层显示 OpenCode Go 订阅用量。
 
 ## 快速开始
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`——插件接入的图片输入钩子由这些版本提供。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`：DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；插件保留 pi-ai `0.87.1` 开发依赖，用于自身构建和测试。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`。每条范围都带显式预发布分支：node-semver 只在范围里存在同 `major.minor.patch` 元组、且自身带预发布标签的比较符时才放行预发布版本，缺少分支会静默排除 harness 的所有预发布构建。插件接入的图片输入钩子由这些版本提供。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`：DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；插件保留 pi-ai `0.87.1` 开发依赖，用于自身构建和测试。
 
 推荐从 npm 安装，使用已安装的 `dsh` CLI 将插件加入 Web profile：
 
@@ -16,7 +16,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-该命令安装 npm 的 `latest` 标签。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.1`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
+该命令安装 npm 的 `latest` 标签。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.2`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
 
 在 Web 客户端的插件页安装并启用插件：
 

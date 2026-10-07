@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用。插件保留 pi-ai `0.87.1` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用。插件保留 pi-ai `0.87.1` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
 
 ### 从 npm 安装
 
@@ -16,7 +16,7 @@
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.1`。安装后重启 Web profile。
+不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.2`。安装后重启 Web profile。
 
 从源码运行 DSH 时，在 DSH 仓库根目录执行：
 
@@ -45,7 +45,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 如果设置了 `DSH_HOME`，则在该目录下的 `profiles/web/node_modules/` 中检查。
 
-如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.1.tgz` 安装生成的 tarball。
+如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.2.tgz` 安装生成的 tarball。
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 

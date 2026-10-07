@@ -1,6 +1,6 @@
 {
   "name": "@skylerfee/dsh-llm-opencode-go-live",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenCode Go 动态模型目录插件",
   "license": "MIT",
   "author": "SkylerFee",
@@ -68,11 +68,11 @@
     "prepublishOnly": "pnpm run check"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-credentials": ">=0.1.7-rc.1",
-    "@deepseek-ai/dsh-llm": ">=0.1.7-rc.1",
-    "@deepseek-ai/dsh-llm-pi-ai": ">=0.1.7-rc.1",
-    "@deepseek-ai/dsh-settings": ">=0.1.7-rc.1",
+    "@deepseek-ai/cordis": "~4.0.4 || ~4.0.5-alpha.1",
+    "@deepseek-ai/dsh-credentials": ">=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0",
+    "@deepseek-ai/dsh-llm-pi-ai": ">=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0",
+    "@deepseek-ai/dsh-settings": ">=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0",
     "@earendil-works/pi-ai": "^0.87.1"
   },
   "dependencies": {
@@ -87,6 +87,7 @@
     "@deepseek-ai/dsh-settings": "0.2.0-rc.2",
     "@earendil-works/pi-ai": "0.87.1",
     "@types/node": "^22.20.0",
+    "semver": "^7.8.5",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
