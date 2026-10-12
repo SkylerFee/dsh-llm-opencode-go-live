@@ -16,7 +16,7 @@
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.2`。安装后重启 Web profile。
+不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.3`。安装后重启 Web profile。
 
 从源码运行 DSH 时，在 DSH 仓库根目录执行：
 
@@ -45,7 +45,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 如果设置了 `DSH_HOME`，则在该目录下的 `profiles/web/node_modules/` 中检查。
 
-如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.2.tgz` 安装生成的 tarball。
+如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.3.tgz` 安装生成的 tarball。
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 
@@ -98,7 +98,7 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 | --- | --- |
 | 固定展开 | 与徽章上的按钮是同一个状态，切换面板是否常驻展开。 |
 | 图钉 | 固定／解除固定位置，与徽章上的按钮是同一个状态。 |
-| ⟳ 刷新 | 立即重新查询（10 秒节流）。 |
+| ⟳ 刷新 | 立即重新查询。按钮只有两种状态：可点、**刷新中…**（图标换成旋转的加载动画、按钮置灰，直到拿到结果或 20 秒兜底超时后退出动画）。**动画一结束按钮立刻恢复可点**——没有冷却等待，连续刷新之间只限制「同时只允许一个请求」。系统开启「减少动态效果」时图标不再旋转，但仍显示加载图标与「刷新中…」。 |
 | × 关闭 | 把插件配置的 `showBalanceOverlay` 写成 `false`，**模型页卡片里的开关同步关闭**；要重新显示，请在卡片中重新打开开关。 |
 
 ### 调整面板大小
@@ -165,6 +165,8 @@ llm-opencode-go-live:
 | 悬浮窗显示“API 密钥缺失” | 卡片尚未保存密钥，或当前 profile 使用的是另一个凭据引用；在卡片中重新填写并应用。 |
 | 悬浮窗显示“没有 OpenCode Go 订阅” | 上游返回 403，表示该密钥所在账号没有 Go 订阅（Zen 预付余额也不在此面板范围内）。 |
 | 悬浮窗显示“查询失败” | 宿主无法访问 `https://opencode.ai/zen/go/v1/usage`，或该端点已随上游调整；模型调用不受影响，可按上方端点说明核对。 |
+| 刷新按钮点不动 | 只会在本次请求进行中置灰（tooltip 显示“刷新中…”并转加载动画），拿到结果或 20 秒兜底超时后立刻恢复可点；不存在刷新后的冷却等待。 |
+| 点了刷新但数字没变 | 上游用量变化本来就慢，百分比常常保持一致；此时看面板底部的“更新于”时间是否刷新即可确认请求已生效（该时间固定为 24 小时制 `HH:MM:SS`，例如 `更新于 14:30:05`）。 |
 
 `opencode-go-live` 不会自动回退到内置 `opencode-go`。需要回退时，在模型选择器或默认模型设置中显式选择内置路由。
 

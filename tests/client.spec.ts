@@ -8,6 +8,22 @@ import { parseUsageResponse } from '../src/balance.js'
 const settle = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
 
 /**
+ * 只替换 `Date.now()` 的时钟替身：`parse`、构造与格式化仍由真实 Date 提供，
+ * 因此校验时间戳、倒计时与 `toLocaleTimeString` 的行为不变，只有节流窗口可控。
+ */
+function controlledDate(clock: { now: number }): DateConstructor {
+  const RealDate = Date
+  const FakeDate = function (this: unknown, ...args: unknown[]) {
+    return args.length === 0 ? new RealDate(clock.now) : new (RealDate as any)(...args)
+  } as unknown as DateConstructor
+  FakeDate.now = () => clock.now
+  FakeDate.parse = RealDate.parse
+  FakeDate.UTC = RealDate.UTC
+  FakeDate.prototype = RealDate.prototype
+  return FakeDate
+}
+
+/**
  * 浏览器全局替身。
  * client bundle 的 factory 在 `node:vm` 上下文里执行，因此 fetch、AbortController
  * 与定时器都必须显式注入；存储只保留在内存中。
@@ -19,12 +35,21 @@ function browserSandbox(options: {
   platform?: string
   /** 预置的 localStorage 内容，用于验证偏好跨挂载恢复。 */
   seed?: Record<string, string>
+  /** 提供后 client bundle 内的 `Date.now()` 改由该时钟驱动（用于节流窗口）。 */
+  clock?: { now: number }
+  /** 为 true 时 `matchMedia('(prefers-reduced-motion: reduce)')` 报告命中。 */
+  reducedMotion?: boolean
 } = {}) {
   const stored = new Map<string, string>(Object.entries(options.seed ?? {}))
   const session = new Map<string, string>()
   const windowListeners = new Map<string, ((event: any) => void)[]>()
   const bodyAttributes = new Map<string, string>()
   const frames: (() => void)[] = []
+  /** 可控的 setTimeout 队列：记录到期时刻（以受控时钟为准），测试按需 flush。 */
+  const timeouts = new Map<number, { callback: () => void; due: number }>()
+  let nextTimeoutId = 1
+  /** 当前时刻：提供受控时钟时以它为准，否则用真实时间。 */
+  const now = () => options.clock?.now ?? Date.now()
   const sandbox: Record<string, any> = {
     window: {
       innerWidth: 1280,
@@ -42,6 +67,10 @@ function browserSandbox(options: {
       requestAnimationFrame(callback: () => void) {
         frames.push(callback)
         return frames.length
+      },
+      /** 刷新加载动画按减少动态效果降级；默认不命中，测试可开启。 */
+      matchMedia(query: string) {
+        return { matches: options.reducedMotion === true && query.includes('prefers-reduced-motion') }
       },
       addEventListener(type: string, handler: (event: any) => void) {
         windowListeners.set(type, [...windowListeners.get(type) ?? [], handler])
@@ -61,7 +90,13 @@ function browserSandbox(options: {
     AbortController,
     setInterval,
     clearInterval,
+    setTimeout: (callback: () => void, delay = 0) => {
+      timeouts.set(nextTimeoutId, { callback, due: now() + delay })
+      return nextTimeoutId++
+    },
+    clearTimeout: (id: number) => { timeouts.delete(id) },
   }
+  if (options.clock !== undefined) sandbox.Date = controlledDate(options.clock)
   return {
     sandbox,
     stored,
@@ -69,6 +104,14 @@ function browserSandbox(options: {
     bodyAttributes,
     /** 执行已排队的动画帧回调：重算脉冲的清除动作就在其中。 */
     flushFrames: () => { for (const frame of frames.splice(0)) frame() },
+    /** 执行已到期（按受控时钟判断）的 setTimeout 回调：刷新冷却与「刷新中」兜底都在其中。 */
+    flushTimers: () => {
+      for (const [id, timer] of [...timeouts]) {
+        if (timer.due > now()) continue
+        timeouts.delete(id)
+        timer.callback()
+      }
+    },
     /** 派发一次 window 事件，供拖拽等真实监听路径使用。 */
     dispatchWindow: (type: string, event: any) => {
       for (const handler of windowListeners.get(type) ?? []) handler(event)
@@ -336,6 +379,10 @@ async function mountOverlay(options: {
   platform?: string
   /** 预置 localStorage，用于验证位置、固定与尺寸偏好跨挂载恢复。 */
   seed?: Record<string, string>
+  /** 提供后 client bundle 内的 `Date.now()` 由该时钟驱动，用于节流窗口测试。 */
+  clock?: { now: number }
+  /** 为 true 时报告系统开启了「减少动态效果」。 */
+  reducedMotion?: boolean
 }) {
   let registration: { id: string; factory: (require: (name: string) => unknown) => any } | undefined
   const client = await readFile(new URL('../client.js', import.meta.url), 'utf8')
@@ -402,6 +449,7 @@ async function mountOverlay(options: {
     session: browser.session,
     bodyAttributes: browser.bodyAttributes,
     flushFrames: browser.flushFrames,
+    flushTimers: browser.flushTimers,
     mutations,
     addedListeners,
     render: () => harness.render(component!, { t: (key: string) => dictionary[key]! }),
@@ -834,5 +882,212 @@ test('展开面板可调整大小并受最小与最大尺寸限制，尺寸跨�
     )
   } finally {
     restored.restore()
+  }
+})
+
+test('刷新按钮只在请求进行中禁用，动画一结束即可再次点击', async () => {
+  const clock = { now: Date.UTC(2026, 9, 12, 6, 0, 0) }
+  let calls = 0
+  const overlay = await mountOverlay({
+    clock,
+    response: async () => {
+      calls += 1
+      return new Response(JSON.stringify({
+        ok: true,
+        checkedAt: new Date(clock.now).toISOString(),
+        usage: {
+          rolling: {
+            status: 'ok',
+            // 每次查询返回不同的用量，用于断言刷新结果确实进了面板
+            percent: calls === 1 ? 10 : 55 + calls,
+            resetsAt: new Date(clock.now + 3_600_000).toISOString(),
+          },
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    },
+  })
+  try {
+    await overlay.ready()
+    assert.equal(calls, 1, '挂载时查询一次')
+    overlay.hover()
+    assert.ok(
+      find(overlay.render(), node => node.type === 'span' && node.children[0] === '10%'),
+      '首次查询结果必须渲染',
+    )
+
+    /** 按稳定标记取按钮，避免随状态变化的 aria-label 影响定位。 */
+    const refreshButton = () => find(overlay.render(), node =>
+      node.props['data-opencode-go-live-overlay'] === 'refresh')!
+
+    // 查询落地后立刻可点：不再有 10 秒节流窗口
+    assert.equal(calls, 1)
+    assert.equal(refreshButton().props.disabled, false, '查询结束后按钮必须立刻可点')
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refresh)
+    assert.equal(find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner'), undefined)
+    assert.equal(refreshButton().children[0], '⟳')
+
+    // 点击后立即进入「刷新中」：禁用、显示进行中文案，图标换成旋转中的加载动画
+    refreshButton().props.onClick()
+    const busy = refreshButton()
+    assert.equal(busy.props.disabled, true, '请求进行中按钮必须禁用')
+    assert.equal(busy.props['aria-label'], overlay.dictionary.refreshing)
+    assert.equal(busy.props['aria-busy'], true)
+    const spinner = find(busy, node => node.props['data-opencode-go-live-overlay'] === 'spinner')
+    assert.ok(spinner, '刷新中必须显示加载动画图标')
+    assert.match(spinner!.props.style.animation, /^opencode-go-live-spin /, '加载图标必须挂上旋转动画')
+    // keyframes 随面板注入，动画名由插件自带（宿主没有可直接复用的全局 keyframes）
+    assert.ok(
+      find(overlay.render(), node => node.type === 'style' && node.children?.[0] === '@keyframes opencode-go-live-spin{to{transform:rotate(360deg)}}'),
+      '面板必须注入旋转动画的 keyframes',
+    )
+
+    // 响应落地：请求数增加、新数据渲染、动画退出、按钮立刻回到可点状态
+    await settle()
+    overlay.render()
+    await settle()
+    const tree = overlay.render()
+    assert.equal(calls, 2, '点击必须重新查询')
+    assert.ok(
+      find(tree, node => node.type === 'span' && node.children[0] === '57%'),
+      '刷新结果必须渲染到面板',
+    )
+    assert.equal(find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner'), undefined)
+    assert.equal(refreshButton().children[0], '⟳')
+    assert.equal(refreshButton().props['aria-busy'], false)
+    assert.equal(refreshButton().props.disabled, false, '动画结束即恢复可点')
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refresh)
+
+    // 关键回归点：动画结束后立刻再点（不推进时钟）必须再发一次请求
+    clock.now += 1_000
+    refreshButton().props.onClick()
+    assert.equal(refreshButton().props.disabled, true)
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refreshing)
+    await settle()
+    overlay.render()
+    await settle()
+    overlay.render()
+    assert.equal(calls, 3, '动画结束后立刻再点必须再次查询，而不是被节流吞掉')
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('刷新请求异常挂起时「刷新中」有兜底上限，不会永久锁死按钮', async () => {
+  // client bundle 的 REFRESHING_MAX_MS 平行定义。
+  const REFRESHING_MAX_MS = 20_000
+  const clock = { now: Date.UTC(2026, 9, 12, 6, 0, 0) }
+  const overlay = await mountOverlay({
+    clock,
+    // 永不落地的响应：模拟宿主或 HTTP 层挂起，客户端查询本身没有超时
+    response: () => new Promise<Response>(() => {}),
+  })
+  try {
+    await overlay.ready()
+    // 刷新按钮只存在于展开面板，先悬浮展开（首次查询仍在挂起）。
+    overlay.hover()
+    const refreshButton = () => find(overlay.render(), node =>
+      node.props['data-opencode-go-live-overlay'] === 'refresh')!
+    // 首次查询挂起时还没有 lastQueryAt，按钮仍可点
+    assert.equal(refreshButton().props.disabled, false)
+
+    refreshButton().props.onClick()
+    assert.equal(refreshButton().props.disabled, true)
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refreshing)
+    assert.ok(
+      find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner'),
+      '挂起期间必须保持加载动画',
+    )
+
+    // 兜底上限之前：请求仍在挂起，按钮保持禁用、动画继续
+    clock.now += REFRESHING_MAX_MS - 1_000
+    overlay.flushTimers()
+    assert.equal(refreshButton().props.disabled, true, '请求仍在挂起时按钮必须保持禁用')
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refreshing)
+    assert.ok(find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner'))
+
+    // 兜底上限到期：按钮恢复可点、动画退出，迟到结果不会把禁用态带回来
+    clock.now += 2_000
+    overlay.flushTimers()
+    assert.equal(refreshButton().props.disabled, false, '请求挂起不得永久锁死按钮')
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refresh)
+    assert.equal(
+      find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner'),
+      undefined,
+      '超时退出加载动画',
+    )
+    assert.equal(refreshButton().children[0], '⟳')
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('系统开启减少动态效果时加载图标不旋转但仍表示进行中', async () => {
+  const clock = { now: Date.UTC(2026, 9, 12, 6, 0, 0) }
+  const overlay = await mountOverlay({
+    clock,
+    reducedMotion: true,
+    response: () => new Promise<Response>(() => {}),
+  })
+  try {
+    await overlay.ready()
+    overlay.hover()
+    const refreshButton = () => find(overlay.render(), node =>
+      node.props['data-opencode-go-live-overlay'] === 'refresh')!
+    refreshButton().props.onClick()
+    const spinner = find(refreshButton(), node => node.props['data-opencode-go-live-overlay'] === 'spinner')
+    assert.ok(spinner, '减少动态效果下仍显示加载图标')
+    assert.equal(spinner!.props.style.animation, undefined, '减少动态效果下不得挂旋转动画')
+    assert.equal(refreshButton().props['aria-label'], overlay.dictionary.refreshing)
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('更新时间使用 24 小时制，无法解析的时间戳隐藏该行', async () => {
+  // 默认区域是 en-US 时 `toLocaleTimeString()` 会输出「2:30:05 PM」，
+  // 因此这里断言与本地时分秒完全一致的 24 小时制文本，且不含 AM/PM 标记。
+  const checkedAt = '2026-10-12T06:30:05.000Z'
+  const overlay = await mountOverlay({
+    response: async () => new Response(JSON.stringify({
+      ok: true,
+      checkedAt,
+      usage: { rolling: { status: 'ok', percent: 10, resetsAt: new Date(Date.now() + 3_600_000).toISOString() } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  })
+  try {
+    await overlay.ready()
+    overlay.hover()
+    const tree = overlay.render()
+    const local = new Date(checkedAt)
+    const expected = [local.getHours(), local.getMinutes(), local.getSeconds()]
+      .map(value => String(value).padStart(2, '0')).join(':')
+    const footer = find(tree, node => typeof node.children?.[0] === 'string'
+      && node.children[0].startsWith(overlay.dictionary.updatedAtPrefix))!
+    assert.ok(footer, '面板必须渲染更新时间行')
+    assert.equal(footer.children[0], `${overlay.dictionary.updatedAtPrefix} ${expected}`)
+    assert.doesNotMatch(String(footer.children[0]), /[AP]\.?M/i, '不得出现 12 小时制的 AM/PM 标记')
+  } finally {
+    overlay.restore()
+  }
+
+  // 时间戳不可解析：隐藏该行，而不是渲染 "Invalid Date"
+  const broken = await mountOverlay({
+    response: async () => new Response(JSON.stringify({
+      ok: true,
+      checkedAt: 'not-a-timestamp',
+      usage: { rolling: { status: 'ok', percent: 10 } },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }),
+  })
+  try {
+    await broken.ready()
+    broken.hover()
+    assert.equal(
+      find(broken.render(), node => typeof node.children?.[0] === 'string'
+        && node.children[0].startsWith(broken.dictionary.updatedAtPrefix)),
+      undefined,
+      '无法解析的时间戳必须隐藏更新时间行',
+    )
+  } finally {
+    broken.restore()
   }
 })

@@ -61,7 +61,7 @@ The static plugin's two halves (no dynamic-Cordis `host.call`; a static client b
 │   showBalanceOverlay: boolean (default    │      │   (component renders null while off)     │
 │   true)                                   │      │                                          │
 │                                            │      │ fetch on mount + 5-minute polling +     │
-│ ctx.inject(['connection'], child =>       │      │   manual refresh (10s throttle)           │
+│ ctx.inject(['connection'], child =>       │      │   manual refresh (disabled while in flight)│
 │   child.connection.fetch.register({       │      │                                          │
 │     path: '/api/opencode-go-live/balance' │◄─────│ fetch('/api/opencode-go-live/balance')   │
 │     methods: ['GET'], requestBody:        │ JSON │   same-origin; browser session cookie   │
@@ -207,7 +207,9 @@ const OVERLAY_VIEWPORT_MARGIN = 24  // margin the size cap keeps against the vie
 const OVERLAY_RESIZE_STEP = 16      // keyboard resize step
 const WINDOW_DRAG_RECALL_ATTR = 'data-window-drag-recall' // host window-drag recall mark (parallel definition)
 const OVERLAY_REFRESH_MS = 300_000   // 5-minute auto refresh
-const MANUAL_REFRESH_THROTTLE_MS = 10_000
+const REFRESHING_MAX_MS = 20_000     // cap on "refreshing": a hung request never locks the button
+const SPIN_ANIMATION_NAME = 'opencode-go-live-spin' // loader keyframes name, plugin-prefixed
+const SPIN_DURATION_MS = 900         // one loader revolution
 ```
 
 #### 4.4.1 Dictionary additions (`copy.zh` / `copy.en` paired)
@@ -220,6 +222,7 @@ const MANUAL_REFRESH_THROTTLE_MS = 10_000
 | `windowMonthly` | 本月 | This month |
 | `loading` | 加载中… | Loading… |
 | `refresh` | 刷新 | Refresh |
+| `refreshing` | 刷新中… | Refreshing… |
 | `closeOverlay` | 关闭用量面板 | Close usage panel |
 | `showOverlay` | 显示用量悬浮窗 | Show usage overlay |
 | `pinOverlay` / `unpinOverlay` | 固定位置 / 解除固定 | Pin position / Unpin position |
@@ -267,7 +270,7 @@ ctx.slots.inject('shell.overlay', () => ctx.slots.register({
   - `position: absolute`, default bottom-right (`right/bottom: 16px`), 264px wide (`box-sizing: border-box`, the same coordinate space as `getBoundingClientRect`); the host `shell.overlay` container is itself `position:absolute; inset:0; pointer-events:none`, and its direct children automatically get `pointer-events:auto`, so the panel follows the frame layout without extra pointer-event declarations;
   - title row: title + keep-expanded button + pin button + refresh button + close button (each button must `stopPropagation` on `pointerdown`, otherwise it bubbles into a drag);
   - three window rows: window name + progress bar (4px tall, rounded) + `${percent}%` + countdown;
-  - footer: `updatedAtPrefix` + relative time;
+  - footer: `updatedAtPrefix` + the data timestamp (a **fixed 24-hour** `HH:MM:SS` in the local zone; the row is hidden when `checkedAt` cannot be parsed);
   - bottom-right: the resize handle (16px hit area, `cursor: nwse-resize`), present only in the expanded form.
 - **State colors**: `status === 'rate-limited'` → `--dsw-alias-state-error-primary`; `percent ≥ 80` → `--dsw-static-amber-500`; otherwise `--dsw-alias-state-success-primary`. The host Theme's `listTokens` output was checked: there is **no** `--dsw-alias-state-warning-*`, so the warning tier uses the static amber palette.
 - **Nothing renders before the toggle is known**: the switch starts at `null` (unknown). Only a read `true` renders and queries, which avoids flashing the panel while the toggle is off and avoids a wasted upstream request.
@@ -297,7 +300,7 @@ async function queryBalance(signal) {
 
   - when mounted, the toggle is on, and the panel is not session-closed → query once immediately;
   - `setInterval(OVERLAY_REFRESH_MS)` (cleared in the effect disposer);
-  - manual refresh button: fires only if the last query is ≥ `MANUAL_REFRESH_THROTTLE_MS` old;
+  - manual refresh button: disabled only while a request is in flight (one request at a time, see §11.6), and clickable again the moment the result lands;
   - the `credentials/reference-updated` event (subscribed by the overlay itself) → re-query (usage follows the key);
   - keep the previous data while loading (the `loading` state shows only when no data exists yet).
 
@@ -365,7 +368,7 @@ Security boundaries:
 - the fake `slots.inject` accepts both `settings.models.footer` and `shell.overlay` (assert both slot names are injected);
 - the fake ctx gains `remote.settings.mutate` (capturing NS / ops / revision);
 - the sandbox globals provide a `fetch` double, `localStorage`/`sessionStorage` stubs, a `document` stub (html platform mark plus body attribute access) and a `requestAnimationFrame` queue (`flushFrames()` settles it);
-- cases: toggle on by default → the card renders the toggle row; clicking → `mutate` receives the `['showBalanceOverlay']` path set; a failed write → optimistic rollback; the overlay renders three window rows on hover while the toggle is on and the envelope is `ok:true` (consuming the host's real `parseUsageResponse` output); `ok:false` renders the matching error copy; the overlay renders `null` while the toggle is off; a config missing the field still renders the chip; the close button writes `showBalanceOverlay=false` and removes the control, and reopening the switch brings the chip back (no hover state survives being hidden); the chip shows the 5-hour bar and percent, its button set is the body and the two pin buttons, the pin icon is hollow by default and fills plus persists on click; chip and panel drags are both gated by pinning, and the click trailing a drag does not expand; the anchor carries `tabIndex: -1` and declares both app-region spellings as `no-drag`, and mount/expand write `data-window-drag-recall` which the next frame clears (`win32` writes nothing); the keep-expanded button holds the panel open after the pointer leaves and can be turned off again (with storage, `aria-pressed`, and icon assertions); the resize handle changes width and height by the pointer delta, clamps past the minimum and maximum sizes, persists on release, does not collapse while resizing, and an out-of-range stored size converges on mount, with the keyboard arrows going through the same clamping.
+- cases: toggle on by default → the card renders the toggle row; clicking → `mutate` receives the `['showBalanceOverlay']` path set; a failed write → optimistic rollback; the overlay renders three window rows on hover while the toggle is on and the envelope is `ok:true` (consuming the host's real `parseUsageResponse` output); `ok:false` renders the matching error copy; the overlay renders `null` while the toggle is off; a config missing the field still renders the chip; the close button writes `showBalanceOverlay=false` and removes the control, and reopening the switch brings the chip back (no hover state survives being hidden); the chip shows the 5-hour bar and percent, its button set is the body and the two pin buttons, the pin icon is hollow by default and fills plus persists on click; chip and panel drags are both gated by pinning, and the click trailing a drag does not expand; the anchor carries `tabIndex: -1` and declares both app-region spellings as `no-drag`, and mount/expand write `data-window-drag-recall` which the next frame clears (`win32` writes nothing); the keep-expanded button holds the panel open after the pointer leaves and can be turned off again (with storage, `aria-pressed`, and icon assertions); the resize handle changes width and height by the pointer delta, clamps past the minimum and maximum sizes, persists on release, does not collapse while resizing, and an out-of-range stored size converges on mount, with the keyboard arrows going through the same clamping; the refresh button is disabled only while a request is in flight (`refreshing` copy plus `disabled` and `aria-busy`), the in-flight glyph becomes a loader carrying the rotation animation and the panel injects its keyframes, the animation exits and the glyph is restored once the result lands with the button **immediately clickable again** (a second click right after the animation must issue another query), and a response that never settles keeps the button disabled and the loader spinning until the fallback cap exits the animation and re-enables it; with "reduce motion" on only the rotation is dropped, keeping the loader icon and the in-progress label (the sandbox provides a controllable clock, `setTimeout`, and `matchMedia`); and the updated-at time renders as a local-zone 24-hour `HH:MM:SS` with no `AM`/`PM` marker, with the row hidden when `checkedAt` cannot be parsed.
 
 ## 8. Documentation and release
 
@@ -401,7 +404,7 @@ The code and tests have landed as designed; `tsc` builds and all 39 offline test
 | `src/balance.ts` | Endpoint constant, `UsageWindow`/`UsageReport`/`UsageEnvelope`, the `parseUsageResponse` pure function, the `createUsageSource` narrow interface. |
 | `src/index.ts` | `BALANCE_ROUTE_PATH`, the extracted `resolveLiveApiKey` (shared by adapter and route), the `balanceRoute` handler, optional `ctx.inject(['connection'])` registration, the `ContextWithConnection` narrow interface. |
 | `src/config.ts` | The top-level volatile field `showBalanceOverlay` (default `true`), its `resolveConfig` validation, and the `ResolvedConfig` field. |
-| `client.js` | 23 dictionary keys, the card switch (`settings.mutate` + revision + optimistic rollback), and `BalanceOverlay` (three windows, dragging, close, throttled refresh, error mapping). |
+| `client.js` | 23 dictionary keys, the card switch (`settings.mutate` + revision + optimistic rollback), and `BalanceOverlay` (three windows, dragging, close, refresh loader animation, error mapping). |
 | `tests/balance.spec.ts` | 9 parsing and source cases (fixed fetch double). |
 | `tests/config.spec.ts` | 3 cases: default, invalid value, and the patch not repeating the default. |
 | `tests/integration.spec.ts` | 3 cases: balance-route success, missing credential, and browser-less degradation. |
@@ -486,3 +489,23 @@ Still unverified (the offline suite does not cover them):
 2. how the handle feels on a real pointer device and how usable the minimum/maximum sizes are;
 3. how a maximally resized panel overlaps content beneath it (settings page, terminal panel);
 4. window dragging on `win32`, where the host's recall pulse is darwin-only.
+
+### 11.6 Refresh button review and visible feedback (2026-10-12)
+
+The user asked to check whether the overlay's refresh button works. The finding: **it works, but it gives no feedback**.
+
+- **Evidence that it works**: a new case drives the real click path — one query on mount; a click issues the second query and the panel re-renders from `10%` to `57%`; a click immediately after the animation ends (without advancing the clock) issues the third. The host's balance route re-queries upstream per request and regenerates `checkedAt` ([src/index.ts](../src/index.ts) `balanceRoute`), the response carries no cache headers, so a refresh always returns fresh data; the button's `onPointerDown: stopDrag` + `onClick` pipeline is identical to keep-expanded and the resize handle, both of which the user already exercised live.
+- **The original defect (experience layer)**: `requestRefresh` returned early when `now - lastQueryAt < MANUAL_REFRESH_THROTTLE_MS`, issuing no request and showing nothing; because `lastQueryAt` is also updated by the 5-minute auto-refresh, a click within 10 seconds of an automatic refresh was equally dead. With usage changing slowly and percentages often identical after a refresh, the only visible change was the 11px tertiary "Updated" time, so the button easily read as broken.
+- **A cooldown that was added and then removed**: the first fix turned that silent throttle into a visible "cooling down" disabled state, but it keyed on `lastQueryAt`, which is updated when the **response lands** — so the cooldown window restarted the moment the animation finished, leaving the user to wait another full 10 seconds (one window locked at the click, another at the result), and an automatic refresh reset it as well. Live feedback ("the button cannot be clicked right after the animation ends") led to **removing the cooldown outright**: `MANUAL_REFRESH_THROTTLE_MS`, the `cooldown` state, and the `refreshCooldown` dictionary key are gone, the button is disabled only while a request is in flight, and it re-enables the moment the result arrives. Upstream protection now rests on **one request at a time** (the button is `disabled` while `refreshing`, and a genuinely disabled button dispatches no click) plus the 5-minute auto-refresh.
+- **The loader animation**: while a request is in flight the button no longer shows a static `…` but an inline SVG loader (a highlighted arc over a faint same-color circle) rotated by `SPIN_ANIMATION_NAME` for `SPIN_DURATION_MS` per revolution. The keyframes ship with the plugin as one `<style>` element injected with the panel (`display:none`, so it never joins the grid layout): the host's several `@keyframes spin` rules live in CSS Modules and are renamed to local scope, leaving no reusable global animation name, so the plugin carries its own prefixed name instead of colliding. The animation exits exactly when the result arrives or the `REFRESHING_MAX_MS` fallback fires — both set `refreshing` back to false, restoring `⟳` (with `aria-busy` in step). With the system's "reduce motion" setting (`prefers-reduced-motion: reduce`) only the `animation` is dropped: the loader icon and the "Refreshing…" label stay, so the state never degrades into invisibility.
+- **Guarding the new failure mode**: the client query has no timeout of its own (the host route answers within 10 seconds, but a hung HTTP layer would leave the `await` pending forever), which could lock the disabled state permanently. A `REFRESHING_MAX_MS` (20s) fallback timer now clears only `refreshing`; a late result is still dropped by the generation rule.
+- **Tests**: the `tests/client.spec.ts` sandbox gained a controllable clock (overriding only `Date.now()`, leaving `parse`/construction/formatting to the real `Date`), controllable `setTimeout`/`clearTimeout` (recording each due time so `flushTimers()` settles only what has expired), and a `matchMedia` double. The cases cover the button being clickable right after a query settles, entering the loader while in flight, exiting the animation and re-enabling immediately once the result lands, a second click right after the animation issuing another query, a response that never settles keeping the button busy until the fallback cap exits the animation, and "reduce motion" dropping the rotation while keeping the loader icon and the in-progress label. Removing `disabled`, the fallback, the rotation, or the `prefers-reduced-motion` branch — or reintroducing a silent throttle — each makes the matching case fail (verified).
+- **Still unverified**: how visually obvious the dimmed state is on a real pointer device, how the loader animation reads at real frame rates, whether a disabled button can still be mistaken for a clickable one, the client query's lack of its own timeout (today's fallback only unlocks the button and exits the animation; it does not cancel the request), and how upstream rate limiting behaves under rapid clicking now that only the single-in-flight rule remains.
+
+### 11.7 Updated-at time switched to a 24-hour clock (2026-10-12)
+
+The user asked for the updated-at time to be shown in 24-hour format. The original implementation called `new Date(checkedAt).toLocaleTimeString()` directly: **the default hour cycle follows the locale**, so en-US and similar locales print `2:30:05 PM` (this machine's Node and browser default locale is en-US, verified).
+
+- **Fix**: a new `formatClock(iso)` helper passes `{ hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }` explicitly. `hourCycle: 'h23'` is used rather than `hour12: false` because some ICU versions read `hour12: false` as `h24` (midnight rendered as `24:00`); spelling out two-digit hour, minute, and second keeps zero padding and a stable field width while still using the local zone and the browser's digit/ordering conventions.
+- **Tightened in passing**: an unparseable timestamp now returns `null`, so the whole footer row is hidden; previously it rendered a literal `Invalid Date`.
+- **Test**: a new `tests/client.spec.ts` case asserts the rendered text equals the `HH:MM:SS` built from the local `getHours/getMinutes/getSeconds` and that it carries no `AM`/`PM` marker; a second mount sets `checkedAt` to `not-a-timestamp` and asserts the row does not exist. Reverting the implementation to `toLocaleTimeString()` defaults, or dropping the unparseable-timestamp `null` branch, makes that case fail (verified).
