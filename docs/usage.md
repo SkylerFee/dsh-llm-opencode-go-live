@@ -98,7 +98,7 @@ Each row shows the percent, a bar, and a reset countdown; the bar turns amber ne
 | --- | --- |
 | Keep expanded | The same state as the chip's button; toggles whether the panel stays expanded. |
 | Pin | Locks or unlocks the position, sharing one state with the chip's button. |
-| ⟳ Refresh | Queries immediately (throttled to once per 10 seconds). |
+| ⟳ Refresh | Queries immediately. The button has only two states: clickable, and **Refreshing…** (the glyph becomes a spinning loader and the button is disabled until the result arrives or the 20-second fallback timeout exits the animation). **It becomes clickable again the moment the animation ends** — there is no cooldown wait; consecutive refreshes are limited only by "one request at a time". With the system's "reduce motion" setting on, the icon stops spinning but still shows the loader and the "Refreshing…" label. |
 | × Close | Writes the plugin's `showBalanceOverlay` to `false`, which **turns the Models-card switch off in step**; reopen that switch to show the control again. |
 
 ### Resizing the panel
@@ -165,6 +165,8 @@ The catalog fields belong to plugin config; the plugin's Models card edits the A
 | The overlay reports a missing API key | The card has no saved key yet, or this profile uses a different credential reference; enter and apply the key in the card. |
 | The overlay reports no OpenCode Go subscription | Upstream answered 403, meaning the key's account has no Go subscription (the Zen prepaid balance is outside this panel's scope). |
 | The overlay reports a failed query | The host cannot reach `https://opencode.ai/zen/go/v1/usage`, or upstream has moved that endpoint; model calls are unaffected — check against the endpoint note above. |
+| The refresh button will not click | It is disabled only while the current request is in flight (the tooltip reads "Refreshing…" and a loader spins); it becomes clickable again as soon as the result arrives or the 20-second fallback timeout fires. There is no post-refresh cooldown wait. |
+| I refreshed but the numbers did not change | Upstream usage changes slowly, so the percentages often stay identical; check the "Updated" time at the panel footer to confirm the request took effect (it is always a 24-hour `HH:MM:SS`, e.g. `Updated 14:30:05`). |
 
 `opencode-go-live` never falls back to the built-in `opencode-go`. To fall back, explicitly select the built-in route in the model picker or the default-model settings.
 

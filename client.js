@@ -33,7 +33,13 @@ window.__ModuleLoader__.load({
     let overlayRecallPending = false
     /** 上游按 key 限流，自动刷新保持低频。 */
     const OVERLAY_REFRESH_MS = 300_000
-    const MANUAL_REFRESH_THROTTLE_MS = 10_000
+    /** 「刷新中」状态的最长持续时间：宿主路由正常 10 秒内返回，这里只兜住请求异常挂起。 */
+    const REFRESHING_MAX_MS = 20_000
+    /** 刷新加载动画：keyframes 名带插件前缀，避免与宿主（CSS Modules 会改写局部名）碰撞。 */
+    const SPIN_ANIMATION_NAME = 'opencode-go-live-spin'
+    const SPIN_DURATION_MS = 900
+    /** 动画规则由插件自带，宿主没有可直接复用的全局 keyframes。 */
+    const spinStyleSheet = `@keyframes ${SPIN_ANIMATION_NAME}{to{transform:rotate(360deg)}}`
     /** 拖拽结束后的这段时间内的点击视为拖拽余波，不触发展开。 */
     const DRAG_CLICK_SUPPRESS_MS = 250
     /** 最近一次拖拽移动的时间戳；徽章整块可拖，用它区分拖动与点击。 */
@@ -108,6 +114,7 @@ window.__ModuleLoader__.load({
         settingsUnavailable: '供应商配置尚不可用', models: '个可用模型', empty: '暂无可用模型',
         showOverlay: '显示用量悬浮窗',
         overlayTitle: 'OpenCode Go 用量', closeOverlay: '关闭用量面板', refresh: '刷新',
+        refreshing: '刷新中…',
         restoreOverlay: '展开用量面板',
         pinOverlay: '固定位置', unpinOverlay: '解除固定',
         pinExpandOverlay: '固定展开', unpinExpandOverlay: '取消固定展开', resizeOverlay: '调整面板大小',
@@ -126,6 +133,7 @@ window.__ModuleLoader__.load({
         settingsUnavailable: 'Provider settings are unavailable', models: 'available models', empty: 'No models are available yet',
         showOverlay: 'Show usage overlay',
         overlayTitle: 'OpenCode Go usage', closeOverlay: 'Close usage panel', refresh: 'Refresh',
+        refreshing: 'Refreshing…',
         restoreOverlay: 'Expand usage panel',
         pinOverlay: 'Pin position', unpinOverlay: 'Unpin position',
         pinExpandOverlay: 'Keep expanded', unpinExpandOverlay: 'Stop keeping expanded', resizeOverlay: 'Resize panel',
@@ -277,6 +285,32 @@ window.__ModuleLoader__.load({
       return Date.now() - overlayDragMovedAt < DRAG_CLICK_SUPPRESS_MS
     }
 
+    /**
+     * 加载动画图标：一段高亮圆弧压在同色淡圆上，整体旋转即读作「加载中」。
+     * 旋转动画由调用方通过 style 传入，便于在减少动态效果时退化为静态圆弧。
+     */
+    function spinnerIcon(spinStyle) {
+      return h('svg', {
+        width: 12, height: 12, viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false',
+        'data-opencode-go-live-overlay': 'spinner',
+        style: { display: 'block', transformOrigin: 'center', ...spinStyle },
+      },
+      h('circle', { cx: 12, cy: 12, r: 8, fill: 'none', stroke: 'currentColor', strokeWidth: 2, opacity: 0.25 }),
+      h('path', {
+        d: 'M20 12a8 8 0 0 0-8-8', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round',
+      }))
+    }
+
+    /** 是否开启了「减少动态效果」：开启时不旋转，只保留静态圆弧与文案。 */
+    function prefersReducedMotion() {
+      try {
+        return typeof window.matchMedia === 'function'
+          && window.matchMedia('(prefers-reduced-motion: reduce)').matches === true
+      } catch {
+        return false
+      }
+    }
+
     /** 校验宿主 envelope；结构不符时按不可解析处理。 */
     function isUsageEnvelope(value) {
       if (!isRecord(value)) return false
@@ -341,6 +375,20 @@ window.__ModuleLoader__.load({
       if (minutes >= 60) return `${Math.round(minutes / 60)}${t('hourUnit')}${t('resetsSuffix')}`
       if (minutes >= 1) return `${minutes}${t('minuteUnit')}${t('resetsSuffix')}`
       return t('resetsSoon')
+    }
+
+    /**
+     * 数据时间戳的展示格式：固定 24 小时制、时分秒各两位。
+     * 不能直接用 `toLocaleTimeString()`——它的默认小时制跟随区域，en-US 等区域会输出
+     * 「2:30:05 PM」；显式 `hourCycle: 'h23'` 才能与界面语言无关地保持 24 小时制。
+     * 时间戳不可解析时返回 null，由调用方隐藏该行（而不是渲染 "Invalid Date"）。
+     */
+    function formatClock(iso) {
+      const at = new Date(iso)
+      if (Number.isNaN(at.getTime())) return null
+      return at.toLocaleTimeString(undefined, {
+        hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
+      })
     }
 
     /** 从宿主读取凭据引用、密钥状态、当前模型目录与展示开关。 */
@@ -519,7 +567,8 @@ window.__ModuleLoader__.load({
           const [size, setSize] = React.useState(() => readOverlaySize())
           const [pos, setPos] = React.useState(null)
           const [nonce, setNonce] = React.useState(0)
-          const [lastQueryAt, setLastQueryAt] = React.useState(0)
+          // 手动刷新的可见状态：请求进行中（图标转为加载动画，按钮禁用）。
+          const [refreshing, setRefreshing] = React.useState(false)
           const [saving, setSaving] = React.useState(false)
           const [writeError, setWriteError] = React.useState('')
           // 展开形态：鼠标悬浮时临时展开，固定展开则不看指针位置持续保持完整面板。
@@ -554,8 +603,9 @@ window.__ModuleLoader__.load({
               const current = ++generation
               const next = await queryBalance(controller.signal)
               if (!active || current !== generation) return
-              setLastQueryAt(Date.now())
               setEnvelope(next)
+              // 查询落地即结束「刷新中」；自动刷新同样清一次，避免状态悬挂。
+              setRefreshing(false)
             }
             if (enabled !== true) return () => { active = false; generation++; controller.abort() }
             void load()
@@ -577,13 +627,25 @@ window.__ModuleLoader__.load({
            */
           React.useEffect(() => { pulseWindowDragRecall() }, [expanded, pos, size, envelope])
 
-          /** 手动刷新按节流窗口放行，避免连点打满上游限流。 */
+          /**
+           * 手动刷新：请求进行中按钮已禁用，这里不需要额外的节流窗口。
+           * 曾经的 10 秒节流按「上次查询完成时刻」重新计时，导致动画结束后还要再等一整窗，
+           * 且自动刷新也会重置它；现在只保留「同时只允许一个请求」这一层保护。
+           */
           function requestRefresh() {
-            const now = Date.now()
-            if (now - lastQueryAt < MANUAL_REFRESH_THROTTLE_MS) return
-            setLastQueryAt(now)
+            setRefreshing(true)
             setNonce(previous => previous + 1)
           }
+
+          /**
+           * 「刷新中」的兜底上限：客户端查询本身没有超时，若请求异常挂起，
+           * 没有这一层按钮就会被永久锁死；到点只解除禁用，迟到结果仍按代际规则丢弃。
+           */
+          React.useEffect(() => {
+            if (!refreshing) return
+            const timer = setTimeout(() => setRefreshing(false), REFRESHING_MAX_MS)
+            return () => clearTimeout(timer)
+          }, [refreshing])
 
           /** 关闭 = 把插件配置的展示开关写成 false，模型页开关随之同步关闭。 */
           async function closeOverlay() {
@@ -798,6 +860,23 @@ window.__ModuleLoader__.load({
             'aria-label': t(expandPinned ? 'unpinExpandOverlay' : 'pinExpandOverlay'),
             onClick: toggleExpandPinned,
           }, expandIcon(expandPinned))
+          // 刷新按钮的两种状态：空闲可点、请求进行中（图标转为加载动画并禁用）。
+          const refreshLabel = t(refreshing ? 'refreshing' : 'refresh')
+          const refreshIcon = refreshing
+            ? spinnerIcon(prefersReducedMotion() ? {} : {
+              animation: `${SPIN_ANIMATION_NAME} ${SPIN_DURATION_MS}ms linear infinite`,
+            })
+            : '⟳'
+          const refreshButton = h('button', {
+            type: 'button', onPointerDown: stopDrag, disabled: refreshing,
+            'data-opencode-go-live-overlay': 'refresh',
+            'aria-busy': refreshing,
+            style: refreshing
+              ? { ...overlayIconButtonStyle, opacity: 0.5, cursor: 'default' }
+              : overlayIconButtonStyle,
+            title: refreshLabel, 'aria-label': refreshLabel,
+            onClick: requestRefresh,
+          }, refreshIcon)
 
           if (!expanded) {
             // 徽章：5 小时窗口的进度条与用量百分比 + 固定展开与固定位置按钮；整块可拖，鼠标进入即展开。
@@ -837,7 +916,7 @@ window.__ModuleLoader__.load({
               reset === null ? null : h('div', { style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' } }, reset)))
           }
           const checked = envelope !== null && envelope.ok === true && typeof envelope.checkedAt === 'string'
-            ? new Date(envelope.checkedAt).toLocaleTimeString()
+            ? formatClock(envelope.checkedAt)
             : null
 
           return h('div', anchorProps,
@@ -846,15 +925,13 @@ window.__ModuleLoader__.load({
             'data-opencode-go-live-overlay': 'panel',
             style: panelStyle,
           },
+          // 加载动画的 keyframes 随面板一起注入（style 元素不参与 grid 布局）。
+          h('style', null, spinStyleSheet),
           h('div', { style: overlayTitleStyle },
             h('span', { style: { flex: 1 } }, t('overlayTitle')),
             expandButton,
             pinButton,
-            h('button', {
-              type: 'button', onPointerDown: stopDrag,
-              style: overlayIconButtonStyle, title: t('refresh'), 'aria-label': t('refresh'),
-              onClick: requestRefresh,
-            }, '⟳'),
+            refreshButton,
             h('button', {
               type: 'button', onPointerDown: stopDrag, disabled: saving,
               style: overlayIconButtonStyle, title: t('closeOverlay'), 'aria-label': t('closeOverlay'),

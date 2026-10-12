@@ -61,7 +61,7 @@ Go 订阅限额模型：5 小时滚动窗口 = 月额度 20%、周 = 50%、月 =
 │   showBalanceOverlay: boolean (默认 true)│      │   （开关关闭时组件渲染 null）            │
 │                                           │      │                                           │
 │ ctx.inject(['connection'], child =>       │      │ 挂载时 fetch + 每 5 分钟轮询 +           │
-│   child.connection.fetch.register({      │      │   手动刷新（10s 节流）                   │
+│   child.connection.fetch.register({      │      │   手动刷新（进行中禁用）                 │
 │     path: '/api/opencode-go-live/balance'│◄─────│ fetch('/api/opencode-go-live/balance')    │
 │     methods: ['GET'], requestBody:       │ JSON │   同源请求，自动携带浏览器会话 cookie    │
 │       'buffered',                         │      │                                           │
@@ -205,7 +205,9 @@ const OVERLAY_VIEWPORT_MARGIN = 24  // 尺寸上限相对视口保留的边距
 const OVERLAY_RESIZE_STEP = 16      // 键盘调整大小的步长
 const WINDOW_DRAG_RECALL_ATTR = 'data-window-drag-recall' // 宿主窗口拖拽区重算标记（平行定义）
 const OVERLAY_REFRESH_MS = 300_000   // 5 分钟自动刷新
-const MANUAL_REFRESH_THROTTLE_MS = 10_000
+const REFRESHING_MAX_MS = 20_000     // 「刷新中」兜底上限：请求挂起时不永久锁死按钮
+const SPIN_ANIMATION_NAME = 'opencode-go-live-spin' // 加载动画 keyframes 名（带插件前缀）
+const SPIN_DURATION_MS = 900         // 加载动画一圈的时长
 ```
 
 #### 4.4.1 词典扩展（`copy.zh` / `copy.en` 成对）
@@ -218,6 +220,7 @@ const MANUAL_REFRESH_THROTTLE_MS = 10_000
 | `windowMonthly` | 本月 | This month |
 | `loading` | 加载中… | Loading… |
 | `refresh` | 刷新 | Refresh |
+| `refreshing` | 刷新中… | Refreshing… |
 | `closeOverlay` | 关闭用量面板 | Close usage panel |
 | `showOverlay` | 显示用量悬浮窗 | Show usage overlay |
 | `pinOverlay` / `unpinOverlay` | 固定位置 / 解除固定 | Pin position / Unpin position |
@@ -265,7 +268,7 @@ ctx.slots.inject('shell.overlay', () => ctx.slots.register({
   - `position: absolute`，默认右下角（`right/bottom: 16px`），宽 264px（`box-sizing: border-box`，与 `getBoundingClientRect` 同一坐标系）；宿主 `shell.overlay` 容器本身是 `position:absolute; inset:0; pointer-events:none`，其直接子元素自动获得 `pointer-events:auto`，因此面板既随 frame 布局，也不需要额外的指针事件声明；
   - 标题行：标题 + 固定展开按钮 + 固定位置按钮 + 刷新按钮 + 关闭按钮（按钮上的 `pointerdown` 必须 `stopPropagation`，否则会冒泡成拖拽）；面板没有最小化按钮——收起由鼠标移开自动完成；
   - 三个窗口行：窗口名 + 进度条（4px 高、圆角）+ `${percent}%` + 倒计时；
-  - 底部：`updatedAtPrefix` + 相对时间；
+  - 底部：`updatedAtPrefix` + 数据时间戳（**固定 24 小时制** `HH:MM:SS`，本地时区；`checkedAt` 不可解析时隐藏该行）；
   - 右下角：调整大小手柄（16px 命中区，`cursor: nwse-resize`），只在展开形态存在。
 - **状态着色**：`status === 'rate-limited'` → `--dsw-alias-state-error-primary`；`percent ≥ 80` → `--dsw-static-amber-500`；否则 `--dsw-alias-state-success-primary`。已核对宿主 Theme 的 `listTokens` 输出：**没有** `--dsw-alias-state-warning-*`，因此警告档使用静态琥珀色板。
 - **配置未读到时不渲染**：开关初值为 `null`（未知）。只有读到 `true` 才渲染并查询，避免开关关闭时闪现面板，也避免一次多余的上游请求。
@@ -295,7 +298,7 @@ async function queryBalance(signal) {
 
   - 挂载且开关开 + 面板未被会话关闭 → 立即查询一次；
   - `setInterval(OVERLAY_REFRESH_MS)`（effect 清理函数清除）；
-  - 手动刷新按钮：距上次查询 ≥ `MANUAL_REFRESH_THROTTLE_MS` 才发请求；
+  - 手动刷新按钮：请求进行中禁用（同时只允许一个请求，见 §11.6），拿到结果后立即恢复可点；
   - `credentials/reference-updated` 事件（overlay 自行订阅）→ 重新查询（密钥更换后用量视图随之变化）；
   - 加载中不闪烁旧内容（保留上次数据，`loading` 态仅在无数据时显示）。
 
@@ -363,7 +366,7 @@ async function queryBalance(signal) {
 - fake `slots.inject` 同时接受 `settings.models.footer` 与 `shell.overlay`（断言两个 slot 名都被注入）；
 - fake ctx 增加 `remote.settings.mutate`（捕获 NS / ops / revision）；
 - sandbox 全局提供 `fetch` 替身、`localStorage`/`sessionStorage` 桩、`document` 桩（html 平台标记 + body 属性读写）与 `requestAnimationFrame` 队列（可 `flushFrames()` 结算）；
-- 用例：开关默认开 → 卡片渲染开关行；点击开关 → `mutate` 收到 `['showBalanceOverlay']` path set；写入失败 → 乐观回滚；overlay 在开关开 + envelope `ok:true` 时悬浮渲染三窗口行（直接消费宿主 `parseUsageResponse` 的真实产出）；`ok:false` 时渲染对应错误文案；开关关时 overlay 渲染 `null`；配置里没有该字段时默认渲染徽章；关闭按钮写入 `showBalanceOverlay=false` 后控件消失、重新打开开关后徽章恢复（隐藏期间不残留悬浮态）；徽章显示 5 小时进度条与百分比、按钮集合为主体与两个固定按钮、固定图标默认空心且点击后实心并写入存储；徽章与面板拖拽都受固定门控、拖拽余波的点击不展开；锚点带 `tabIndex: -1` 且两种 app-region 拼写都声明为 `no-drag`，挂载/展开后写 `data-window-drag-recall` 并在下一帧清除（`win32` 平台不写）；固定展开按钮让面板在移开鼠标后保持展开并能取消（含存储与 `aria-pressed`/图标断言）；调整大小手柄按位移改变宽高、超界被钳制到最小/最大尺寸、松手写入存储、调整期间不收起、越界历史值在挂载时收敛，键盘方向键走同一套钳制。
+- 用例：开关默认开 → 卡片渲染开关行；点击开关 → `mutate` 收到 `['showBalanceOverlay']` path set；写入失败 → 乐观回滚；overlay 在开关开 + envelope `ok:true` 时悬浮渲染三窗口行（直接消费宿主 `parseUsageResponse` 的真实产出）；`ok:false` 时渲染对应错误文案；开关关时 overlay 渲染 `null`；配置里没有该字段时默认渲染徽章；关闭按钮写入 `showBalanceOverlay=false` 后控件消失、重新打开开关后徽章恢复（隐藏期间不残留悬浮态）；徽章显示 5 小时进度条与百分比、按钮集合为主体与两个固定按钮、固定图标默认空心且点击后实心并写入存储；徽章与面板拖拽都受固定门控、拖拽余波的点击不展开；锚点带 `tabIndex: -1` 且两种 app-region 拼写都声明为 `no-drag`，挂载/展开后写 `data-window-drag-recall` 并在下一帧清除（`win32` 平台不写）；固定展开按钮让面板在移开鼠标后保持展开并能取消（含存储与 `aria-pressed`/图标断言）；调整大小手柄按位移改变宽高、超界被钳制到最小/最大尺寸、松手写入存储、调整期间不收起、越界历史值在挂载时收敛，键盘方向键走同一套钳制；刷新按钮只在请求进行中禁用（`refreshing` 文案 + `disabled` + `aria-busy`），此时图标换成挂旋转动画的加载图标且面板注入 keyframes，拿到结果后动画退出、图标复原且**立刻恢复可点**（动画结束后立刻再点必须再次查询）；请求永不落地时按钮在兜底上限（`REFRESHING_MAX_MS`）之前保持禁用与动画、到点后动画退出并恢复可点；系统开启减少动态效果时只去掉旋转、仍显示加载图标与进行中文案（时钟、`setTimeout` 与 `matchMedia` 由沙箱可控）；更新时间按本地时区渲染为 24 小时制 `HH:MM:SS` 且不含 AM/PM，`checkedAt` 不可解析时整行隐藏。
 
 ## 8. 文档与发布
 
@@ -399,7 +402,7 @@ async function queryBalance(signal) {
 | `src/balance.ts` | 端点常量、`UsageWindow`/`UsageReport`/`UsageEnvelope`、`parseUsageResponse` 纯函数、`createUsageSource` 窄接口。 |
 | `src/index.ts` | `BALANCE_ROUTE_PATH`、`resolveLiveApiKey` 抽取（适配器与路由共用）、`balanceRoute` 处理器、`ctx.inject(['connection'])` 可选注册、`ContextWithConnection` 窄接口。 |
 | `src/config.ts` | 顶层 volatile 字段 `showBalanceOverlay`（默认 `true`）、`resolveConfig` 校验与 `ResolvedConfig` 字段。 |
-| `client.js` | 词典 23 键、卡片开关（`settings.mutate` + revision + 乐观回滚）、`BalanceOverlay`（三窗口、拖拽、关闭、节流刷新、错误映射）。 |
+| `client.js` | 词典 23 键、卡片开关（`settings.mutate` + revision + 乐观回滚）、`BalanceOverlay`（三窗口、拖拽、关闭、刷新加载动画、错误映射）。 |
 | `tests/balance.spec.ts` | 9 个解析与来源用例（固定 fetch 替身）。 |
 | `tests/config.spec.ts` | 默认值、非法值、patch 不重复默认值 3 个用例。 |
 | `tests/integration.spec.ts` | 余额路由成功/凭据缺失/无 connection 降级 3 个用例。 |
@@ -484,3 +487,23 @@ async function queryBalance(signal) {
 2. 手柄在真实指针设备上的手感与最小／最大尺寸的可用性；
 3. 面板调整到最大尺寸后与下方元素（设置页、终端面板）的视觉遮挡关系；
 4. `win32` 平台的窗口拖拽行为（宿主的重算脉冲只按 darwin 生效）。
+
+### 11.6 刷新按钮核查与可见反馈（2026-10-12）
+
+用户反馈「检查悬浮窗的刷新按钮是否有效」。核查结论：**功能有效，但反馈缺失**。
+
+- **有效性证据**：新增用例驱动真实点击路径——挂载查询 1 次；点击发出第 2 次查询，面板从 `10%` 渲染为 `57%`；动画结束后再点（不推进时钟）发出第 3 次查询。宿主余额路由每次请求都重新查询上游并重新生成 `checkedAt`（[src/index.ts](../src/index.ts) 的 `balanceRoute`），响应无缓存头，因此刷新拿到的一定是新数据；按钮的 `onPointerDown: stopDrag` + `onClick` 管线与固定展开、调整手柄相同，后两者已在实机验证可用。
+- **原缺陷（体验层）**：`requestRefresh` 在 `now - lastQueryAt < MANUAL_REFRESH_THROTTLE_MS` 时直接 `return`，既不发请求也不给提示；而 `lastQueryAt` 也会被每 5 分钟的自动刷新更新，因此在自动刷新后的 10 秒内点击同样毫无反应。加之用量变化很慢、刷新后百分比常常不变，唯一可见变化只有底部 11px 三级色的「更新于」时间，用户很容易判断成「按钮失效」。
+- **中途引入又移除的冷却期**：第一版修复把这个静默节流做成可见的「冷却中」禁用态，但计时基准是 `lastQueryAt`，而它在**响应落地**时才更新——于是动画一结束冷却窗口才重新开始，用户还要再等满 10 秒（点击时锁一窗、落地时又锁一窗）；自动刷新同样会重置它。用户实机反馈「刷新动画结束后按钮无法立刻点击」，据此**彻底移除冷却**：`MANUAL_REFRESH_THROTTLE_MS`、`cooldown` 状态与 `refreshCooldown` 词典键一并删除，按钮只在「请求进行中」禁用，拿到结果即恢复可点。上游保护改由**同时只允许一个请求**（按钮在 `refreshing` 期间 `disabled`，且真实 DOM 中禁用按钮不派发 click）与 5 分钟自动刷新承担。
+- **加载动画**：进行中不再是静态 `…`，而是内联 SVG 加载图标（高亮圆弧压在同色淡圆上）挂 `SPIN_ANIMATION_NAME` 旋转（`SPIN_DURATION_MS` 一圈）。keyframes 由插件随面板注入一个 `<style>`（`display:none`，不参与 grid 布局）：宿主的多处 `@keyframes spin` 都在 CSS Modules 里，名字被改写为局部作用域，没有可直接复用的全局动画名，所以自带一个带插件前缀的名字避免碰撞。动画的退出条件就是「拿到结果」或 `REFRESHING_MAX_MS` 兜底超时——两者都会把 `refreshing` 置回 false，`⟳` 随之复原（`aria-busy` 同步）。系统开启「减少动态效果」（`prefers-reduced-motion: reduce`）时只去掉 `animation`，仍显示加载图标与「刷新中…」，不把状态退化成看不出来。
+- **新失败模式的兜底**：客户端查询本身没有超时（宿主路由 10 秒内返回，但 HTTP 层若挂起则 `await` 永不落地），禁用态因此可能永久锁死。追加 `REFRESHING_MAX_MS`(20s) 的兜底定时器：到点只解除 `refreshing`，迟到结果仍按代际规则丢弃。
+- **测试**：`tests/client.spec.ts` 的沙箱补上可控时钟（只覆盖 `Date.now()`，`parse`／构造／格式化仍走真实 `Date`）、可控 `setTimeout`／`clearTimeout`（记录到期时刻，`flushTimers()` 只结算已到期者）与 `matchMedia` 替身。用例覆盖：查询结束后按钮立刻可点、点击后进入加载动画并禁用、结果落地退出动画并立即恢复可点、**动画结束后立刻再点必须再次查询**；请求永不落地时保持禁用与动画、到兜底上限后动画退出并恢复可点；系统开启减少动态效果时图标不挂动画但仍显示加载图标与进行中文案。分别移除 `disabled`、兜底副作用、旋转动画、`prefers-reduced-motion` 分支，或**重新引入静默节流**，对应用例都会失败（已实测）。
+- **仍未验证**：真实指针设备上「置灰」的视觉显著性、加载动画在真机上的帧率观感，以及禁用态是否仍会被误认为可点；客户端查询缺少自身超时（现有兜底只保证按钮解锁与动画退出，不保证请求被中断）；去掉冷却后，连续点按的上游压力只由「单请求在途」限制，未在真机实测上游限流表现。
+
+### 11.7 更新时间改为 24 小时制（2026-10-12）
+
+用户反馈「更新时间的格式改为 24 小时制」。原因是原实现直接用 `new Date(checkedAt).toLocaleTimeString()`：**默认小时制跟随区域**，在 en-US 等区域会输出 `2:30:05 PM`（本机 Node/浏览器默认区域正是 en-US，已实测）。
+
+- **修复**：抽出 `formatClock(iso)`，显式传入 `{ hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }`。用 `hourCycle: 'h23'` 而不是 `hour12: false`，是为了避开部分 ICU 版本把 `hour12: false` 解释成 `h24`（午夜显示 `24:00`）的老问题；时分秒显式两位，保证零填充与字段宽度稳定，同时仍沿用本地时区与浏览器的数字/顺序习惯。
+- **顺带收敛**：时间戳不可解析时返回 `null`，底部整行隐藏；此前会渲染出字面量 `Invalid Date`。
+- **测试**：`tests/client.spec.ts` 新增用例断言渲染文本等于按本地 `getHours/getMinutes/getSeconds` 拼出的 `HH:MM:SS`，并断言不含 `AM/PM` 标记；另一段挂载把 `checkedAt` 设为 `not-a-timestamp`，断言该行不存在。把实现退回 `toLocaleTimeString()` 默认参数、或去掉不可解析时的 `null` 分支，该用例都会失败（已实测）。
