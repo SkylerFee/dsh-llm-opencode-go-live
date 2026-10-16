@@ -6,7 +6,7 @@
 
 ## 分支与发布
 
-新功能或文档完善从最新 `main` 创建 `feat/<topic>` 分支，Bug 修复创建 `fix/<topic>` 分支。准备 PR、版本更新、标签或 GitHub Release 时，先阅读[开发与发布流程](docs/development-and-release.zh.md)（[English](docs/development-and-release.md)）；合并前确认 `check` 通过，发布标签只指向 `main` 上通过 CI 的提交。
+新功能或文档完善从最新 `main` 创建 `feat/<topic>` 分支，Bug 修复创建 `fix/<topic>` 分支。准备 PR、版本更新、标签或 GitHub Release 时，先阅读[开发与发布流程](docs/development-and-release.zh.md)（[English](docs/development-and-release.md)）；合并前确认 `check` 通过，合并后删除该 PR 的分支（远端由仓库的自动删除设置清理，本地用 `git branch -d`，只保留 `main`），发布标签只指向 `main` 上通过 CI 的提交。
 
 ## 项目边界
 

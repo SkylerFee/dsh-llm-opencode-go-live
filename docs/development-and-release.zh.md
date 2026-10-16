@@ -9,7 +9,7 @@
 1. 新功能或文档完善从最新 `main` 创建 `feat/short-name` 分支，Bug 修复创建 `fix/short-name` 分支；不直接向 `main` 推送。Bug 修复先确认根因，并添加能复现原问题的回归测试；新功能为非平凡行为添加测试。修改配置、路由、缓存或模型字段时，同步更新受影响的中英文文档。
 2. 在插件仓库运行 `pnpm run check`。涉及安装或打包内容时再运行 `pnpm pack --dry-run`，检查产物不含 `node_modules/`、测试文件或敏感数据。涉及用户可见的模型或设置行为时，在 DSH Web profile 验证受影响的实际路径，并在 PR 中说明未运行的真实 API 或运行时检查。
 3. 向 `main` 发起 PR，写明行为变化、验证结果和已知限制。当前[仓库规则](https://github.com/SkylerFee/dsh-llm-opencode-go-live/rules)要求经过 PR，且 GitHub Actions 的 `check` 必须通过；批准人数为 0。CI 在 Node.js 22 上构建并运行离线测试，不访问 Models.dev 或真实 OpenCode Go API。
-4. `check` 通过后合并 PR。当前规则不要求 PR 分支始终与 `main` 同步；如果等待期间 `main` 已前进，先更新分支并确认检查重新通过。合并后还要等待 `main` 的推送 CI 通过，再以该分支的最终提交准备发布。
+4. `check` 通过后合并 PR。当前规则不要求 PR 分支始终与 `main` 同步；如果等待期间 `main` 已前进，先更新分支并确认检查重新通过。**合并后删除该 PR 的分支，工作区只保留 `main`**：远端头分支由仓库的「合并后自动删除头分支」设置（`delete_branch_on_merge = true`）清理，本地用 `git branch -d` 删除——squash 或 rebase 合并的分支提交不是 `main` 的祖先，`-d` 会拒绝，此时改用 `-D`（内容已随合并提交进入 `main`）；随后 `git fetch --prune` 清掉 `[origin/…: gone]` 之类的残留引用。最后等待 `main` 的推送 CI 通过，再以合并后的 `main` 提交准备发布。
 
 ## npm 首次初始化
 
