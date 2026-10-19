@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用。插件保留 pi-ai `0.87.1` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除；宿主每开一条新的 patch 线都需要再补一条分支，其中 `>=0.2.2-0` 分支已为下一条线预留。不要把它们合并成 `>=0.2.0-0 <0.3.0-0`：单个 `0.2.0` 元组覆盖不到 `0.2.1-rc.2`，反而会把当前宿主排除在外。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；该范围同时覆盖 0.87.1 线和宿主实际提供的 1.x 构建（1.0.2、1.1.0）。插件保留 pi-ai `1.1.0` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
 
 ### 从 npm 安装
 

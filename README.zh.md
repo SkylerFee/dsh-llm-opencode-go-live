@@ -8,7 +8,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 
 ## 快速开始
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`。每条范围都带显式预发布分支：node-semver 只在范围里存在同 `major.minor.patch` 元组、且自身带预发布标签的比较符时才放行预发布版本，缺少分支会静默排除 harness 的所有预发布构建。插件接入的图片输入钩子由这些版本提供。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`：DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；插件保留 pi-ai `0.87.1` 开发依赖，用于自身构建和测试。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 DeepSeek Harness 0.1.7-rc.1 及以上。插件的 peer 依赖是 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`。每条范围都带显式预发布分支：node-semver 只在范围里存在同 `major.minor.patch` 元组、且自身带预发布标签的比较符时才放行预发布版本，缺少分支会静默排除 harness 的所有预发布构建；宿主每开一条新的 patch 线都需要再补一条分支，其中 `>=0.2.2-0` 分支已为下一条线预留。不要把它们合并成 `>=0.2.0-0 <0.3.0-0`：单个 `0.2.0` 元组覆盖不到 `0.2.1-rc.2`，反而会把当前宿主排除在外。插件接入的图片输入钩子由这些版本提供。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`：DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；该范围同时覆盖 0.87.1 线和宿主实际提供的 1.x 构建（1.0.2、1.1.0）。插件保留 pi-ai `1.1.0` 开发依赖，用于自身构建和测试。
 
 推荐从 npm 安装，使用已安装的 `dsh` CLI 将插件加入 Web profile：
 
