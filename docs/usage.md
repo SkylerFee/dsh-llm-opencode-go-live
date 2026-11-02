@@ -49,6 +49,38 @@ For an installation independent of the checkout, run `pnpm pack` in the built pl
 
 Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add ../dsh-llm-opencode-go-live` from the DSH repository root.
 
+#### Switching a profile from the npm build to a local build
+
+The host's plugin manager treats a package that already sits in the profile's dependencies as installed (`already-installed`) while HMR is available, so `add` is rejected until that entry is removed. `--profile` names the profile that is actually running — `desktop` for the desktop app, `web` for the Web client.
+
+```sh
+# 1) Build the local plugin; lib/ is gitignored and produced by the build
+cd /path/to/dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+
+# 2) Switch the profile over. Without a `dsh` CLI, call the CLI entry from the
+#    DSH checkout directly; it forwards the arguments to the profile's pnpm.
+DSH_CLI=/path/to/deepseek-harness/apps/cli/lib/bin.js
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add /path/to/dsh-llm-opencode-go-live
+```
+
+The profile records a `link:` dependency on the checkout (a symlink inside `node_modules`). Once it points at your directory, **quit the host completely and start it again**; afterwards a rebuild plus a restart is enough:
+
+```sh
+readlink ~/.dsh/profiles/desktop/node_modules/@skylerfee/dsh-llm-opencode-go-live
+```
+
+Installing a `pnpm pack` tarball (`add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.3.tgz`) works as well. That records a `file:` dependency and copies the files, so **keep the tarball where it is** — do not put it in a temporary directory (such as `tmp/`) that gets cleaned up, or the next `pnpm install` fails to find it.
+
+To return to the npm build:
+
+```sh
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live@0.2.3
+```
+
 The same install and enable flow driven from the Web client's plugin page:
 
 ![Installing and enabling the plugin from the Web client's plugin page](img/install-plugin.gif)

@@ -49,6 +49,38 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
 
+#### 已装 npm 版时切换到本地构建
+
+要把正在运行的 profile 从 npm 版切到本地构建，必须先移除再安装：宿主的插件管理在 HMR 可用时会把"已在依赖里"的包判为已安装（`already-installed`），直接 `add` 会被拒绝。`--profile` 取实际在跑的 profile——桌面应用是 `desktop`，Web 客户端是 `web`。
+
+```sh
+# 1) 构建本地插件；产物 lib/ 在 .gitignore 内，由构建生成
+cd /path/to/dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+
+# 2) 切换到本地目录。没有 dsh CLI 时，直接调用 DSH 源码里的 CLI 入口，
+#    它把参数转发给 profile 目录的 pnpm
+DSH_CLI=/path/to/deepseek-harness/apps/cli/lib/bin.js
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add /path/to/dsh-llm-opencode-go-live
+```
+
+profile 会把插件记为指向源码目录的 `link:` 依赖（`node_modules` 里是软链）。确认指向后，**完全退出宿主再启动**；之后改动代码只需重新 `pnpm run build` 并重启宿主：
+
+```sh
+readlink ~/.dsh/profiles/desktop/node_modules/@skylerfee/dsh-llm-opencode-go-live
+```
+
+也可以先 `pnpm pack` 再安装生成的 tarball（`add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.3.tgz`）。这种安装记录的是 `file:` 依赖、目录是实体副本，因此 **tarball 必须留在原位置**——不要放在会被清理的临时目录（例如 `tmp/`）里，否则下次 `pnpm install` 会因找不到文件而失败。
+
+验证完成后，若想回到 npm 版：
+
+```sh
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live@0.2.3
+```
+
 同样的安装与启用流程也可以在 Web 客户端的插件页完成：
 
 ![在 Web 客户端的插件页安装并启用插件](img/install-plugin.gif)

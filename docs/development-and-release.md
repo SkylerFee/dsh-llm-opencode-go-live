@@ -46,7 +46,7 @@ The workflow uses a GitHub-hosted runner and OIDC, with no `NPM_TOKEN` secret. A
 ## Prepare and publish a version
 
 1. Select the merged changes for this release and increment the prerelease version in `package.json`. The next version can be `0.1.0-alpha.6`. Update the version badge in both READMEs, the tarball examples in both usage guides, and the release notes. A single change may carry the version update in its PR; use a separate release PR when grouping several changes.
-2. The release PR must also pass `check`. Before tagging, run `pnpm pack --dry-run` and install from the local checkout or tarball into a DSH Web profile to verify plugin loading, catalog refresh, the settings page, and model calls as applicable. Offline CI does not replace these runtime checks; list any checks that could not be run in the release notes.
+2. The release PR must also pass `check`. Before tagging, run `pnpm pack --dry-run` and install from the local checkout or tarball into a DSH Web profile to verify plugin loading, catalog refresh, the settings page, and model calls as applicable; the [usage guide](usage.md#switching-a-profile-from-the-npm-build-to-a-local-build) lists the commands for switching a profile to a local build and back. Offline CI does not replace these runtime checks; list any checks that could not be run in the release notes.
 3. After the release PR merges and the `main` CI passes, update local `main` to that commit, then create and push a new tag that matches `package.json`:
 
    ```sh
