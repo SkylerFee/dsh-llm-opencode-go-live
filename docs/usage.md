@@ -58,6 +58,7 @@ The same install and enable flow driven from the Web client's plugin page:
 1. Start the Web profile, open **Settings → Models**, and find the plugin-owned **OpenCode Go (Live)** card.
 2. The card shows only the key status and the model list by default. Click **Edit**, enter the OpenCode Go key in the **API Key** field, and apply it — or click **Cancel** to discard the input. The key is written to the DSH credentials service and the page never echoes the stored value; the status line indicates that the reference is known to hold a credential.
 3. Wait for the dynamic catalog to load, expand the card's model list, or find the models under `opencode-go-live` in the model picker. Select one to start a conversation; to use it as the default model, choose this route and model in the DSH default-model settings.
+4. To check for upstream catalog changes immediately, click **Refresh model list** next to the model count. A transient notice then reports how many models were added, updated, and removed (or that the list is already up to date); a failed refresh keeps the last successful catalog and reports the failure. While refreshing, the button reads **Refreshing…** and is disabled.
 
 The catalog comes from Models.dev and fetching it needs no API key; the key is resolved only when a request actually reaches the OpenCode Go API. If a selected model still cannot be called, use [Troubleshooting](#troubleshooting) below to separate credential errors from upstream responses.
 
@@ -143,7 +144,7 @@ llm-opencode-go-live:
 | `catalog.refreshTimeoutMs` | `10000` | Timeout for a single catalog request in milliseconds; `0` disables the timeout. |
 | `showBalanceOverlay` | `true` | Whether the usage overlay is shown; the Models card switch reads and writes it, and the host runtime never consumes it. |
 
-The catalog fields belong to plugin config; the plugin's Models card edits the API key and the usage-overlay switch. A refresh first tries to restore the snapshot; a failed refresh retains the most recent successful catalog. The API key is never written to the catalog snapshot.
+The catalog fields belong to plugin config; the plugin's Models card edits the API key, toggles the usage overlay, and can refresh the model catalog on demand. A refresh first tries to restore the snapshot; a failed refresh retains the most recent successful catalog. The API key is never written to the catalog snapshot.
 
 ## Troubleshooting
 

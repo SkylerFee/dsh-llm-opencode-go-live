@@ -32,9 +32,10 @@ The plugin registers only the `opencode-go-live` route. The built-in DSH `openco
 | `src/policy.ts` | Take known protocol policies from the current pi-ai OpenCode Go model table and give unknown models the generic Completions policy. |
 | `src/transform.ts` | Validate source models and produce pi-ai models plus rejection diagnostics. |
 | `src/store.ts` | Read and write the in-memory or JSON catalog snapshot. |
+| `src/diff.ts` | Compare the previous and next catalogs to report added, updated, and removed models. |
 | `src/provider.ts` | Reuse `PiAiAdapter` and the pi-ai OpenCode Go transport, passing the session id upstream. |
-| `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, and credential resolution. |
-| `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing and the model list in the Models slot. |
+| `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, the manual refresh route, and credential resolution. |
+| `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing, a manual catalog refresh with a transient result notice, and the model list in the Models slot. |
 
 ## Catalog lifecycle
 
@@ -67,6 +68,12 @@ At startup the snapshot in the configured path is restored first, then a network
 Once a conversion has completed and been saved successfully, the runtime replaces the whole snapshot at once and then tells DSH to update the model list. Later model lookups and new requests use the new catalog; calls already prepared keep the model data from when they were prepared. A failed source fetch, conversion, or save retains the old snapshot. A legitimately empty catalog clears the models; if the source has entries but all of them are rejected for reasons other than deprecation, the old snapshot is retained.
 
 The bundle sets `catalog.cachePath` by default to `cache/opencode-go-live.json` under the Harness home (`~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when set), so an installed bundle persists the catalog across restarts; a hand-mounted plugin that leaves the field unset keeps it in memory only. When `catalog.cachePath` is configured, JSON storage first writes a temporary file with mode `0600` and then replaces the snapshot with `rename`. The snapshot contains the check time, the converted models, and diagnostics; it never contains the API key, conversation requests, or responses. A snapshot that cannot be read or fails validation is treated as absent.
+
+## Manual refresh
+
+The Models card exposes a manual refresh next to the model count. `POST /api/opencode-go-live/refresh` awaits the same `refresh()` the scheduled job uses, so a click during a scheduled or startup refresh shares that request instead of starting a second one. On success the route answers with the model ids added, updated, and removed relative to the snapshot the runtime held before the refresh, plus the new total; the card renders those three counts as a transient notice that does not intercept pointer events and disappears on its own. The comparison is keyed by model id: a model present in both snapshots but with a different name, protocol, endpoint, limits, input modalities, reasoning flag, or compatibility fields counts as updated.
+
+A failed refresh keeps the previous catalog and reports the failure instead of showing counts; an empty change reports that the catalog is already up to date. The route is registered only when the host mounts the `connection` service, exactly like the balance route, so a host without it leaves the button reporting a failure rather than blocking the card.
 
 ## Models and protocols
 

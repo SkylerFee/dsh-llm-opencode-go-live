@@ -8,6 +8,10 @@ window.__ModuleLoader__.load({
     const ROUTE = 'opencode-go-live'
     /** 与 src/index.ts 的 BALANCE_ROUTE_PATH 平行定义：client bundle 无法 import 插件源码。 */
     const BALANCE_ROUTE = '/api/opencode-go-live/balance'
+    /** 与 src/index.ts 的 REFRESH_ROUTE_PATH 平行定义：主动刷新有副作用，走 POST。 */
+    const REFRESH_ROUTE = '/api/opencode-go-live/refresh'
+    /** 瞬态提示的驻留时长；足够读完「新增/更新/移除」三个数字，又不至于挡住界面。 */
+    const TOAST_DURATION_MS = 3200
     // 悬浮窗的纯界面偏好（位置、固定、固定展开、尺寸）留在浏览器本地；是否展示由插件配置决定。
     const OVERLAY_POS_KEY = 'opencode-go-live.overlay.pos'
     const OVERLAY_PINNED_KEY = 'opencode-go-live.overlay.pinned'
@@ -65,6 +69,25 @@ window.__ModuleLoader__.load({
       border: '0.5px solid var(--dsw-alias-border-l3)', borderRadius: 'var(--dsw-radius-sm)',
       background: 'transparent', color: 'var(--dsw-alias-label-primary)', fontSize: 12,
     }
+    /** 卡片内「刷新模型列表」按钮：与编辑按钮同构，但不抢占行内剩余空间、不折行。 */
+    const refreshStyle = {
+      ...editStyle,
+      marginLeft: 0,
+      whiteSpace: 'nowrap',
+    }
+    /**
+     * 卡片触发的瞬态提示：固定在视口右下角。
+     * 用 fixed 而不是行内提示，是为了让「新增/更新/移除」的变化在滚动到模型列表时也可见；
+     * `pointerEvents: none` 保证它不挡住卡片与整页操作。
+     */
+    const toastStyle = {
+      position: 'fixed', right: 24, bottom: 24, zIndex: 2147483000,
+      maxWidth: 360, padding: '10px 14px', fontSize: 13, lineHeight: 1.5,
+      borderRadius: 10, boxShadow: '0 8px 28px rgba(0, 0, 0, 0.22)',
+      border: '0.5px solid var(--dsw-alias-border-l3)',
+      background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)',
+      pointerEvents: 'none', userSelect: 'none',
+    }
     const overlayStyle = {
       position: 'relative', boxSizing: 'border-box', padding: '10px 12px',
       display: 'grid', gap: 8, fontSize: 12, userSelect: 'none', touchAction: 'none',
@@ -112,6 +135,9 @@ window.__ModuleLoader__.load({
         missing: 'API 密钥缺失', edit: '编辑', cancel: '取消', save: '应用', saved: 'API 密钥已保存',
         blank: '请输入 API Key', invalid: '请输入有效的 API Key，不要粘贴环境变量赋值行',
         settingsUnavailable: '供应商配置尚不可用', models: '个可用模型', empty: '暂无可用模型',
+        refreshModels: '刷新模型列表', refreshModelsBusy: '刷新中…',
+        refreshResult: '模型列表已更新：新增 {a} 个，更新 {u} 个，移除 {r} 个',
+        refreshUnchanged: '模型列表已是最新', refreshFailed: '刷新失败，已保留上次成功目录',
         showOverlay: '显示用量悬浮窗',
         overlayTitle: 'OpenCode Go 用量', closeOverlay: '关闭用量面板', refresh: '刷新',
         refreshing: '刷新中…',
@@ -131,6 +157,9 @@ window.__ModuleLoader__.load({
         missing: 'API key missing', edit: 'Edit', cancel: 'Cancel', save: 'Apply', saved: 'API key saved',
         blank: 'Enter an API key', invalid: 'Enter a valid API key, not an environment assignment',
         settingsUnavailable: 'Provider settings are unavailable', models: 'available models', empty: 'No models are available yet',
+        refreshModels: 'Refresh model list', refreshModelsBusy: 'Refreshing…',
+        refreshResult: 'Model list updated: {a} added, {u} updated, {r} removed',
+        refreshUnchanged: 'The model list is already up to date', refreshFailed: 'Refresh failed; the last successful catalog is kept',
         showOverlay: 'Show usage overlay',
         overlayTitle: 'OpenCode Go usage', closeOverlay: 'Close usage panel', refresh: 'Refresh',
         refreshing: 'Refreshing…',
@@ -331,6 +360,38 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /** 校验主动刷新响应包；结构不符时按不可解析处理，避免把异常结构渲染成数字。 */
+    function isRefreshEnvelope(value) {
+      if (!isRecord(value)) return false
+      if (value.ok === true) {
+        return Array.isArray(value.added) && Array.isArray(value.removed) && Array.isArray(value.updated)
+          && typeof value.total === 'number'
+      }
+      if (value.ok === false) return typeof value.code === 'string'
+      return false
+    }
+
+    /**
+     * 请求宿主主动刷新模型目录。
+     *
+     * 与余额查询一样按信封收敛：网络故障、宿主未注册该路由（旧宿主）或响应结构异常
+     * 都返回 `ok: false`，由卡片显示统一失败文案；不抛出，避免打断卡片其余交互。
+     * @param signal - 可选的中止信号。
+     * @returns 刷新结果信封：成功含新增/更新/移除的模型 id。
+     */
+    async function requestCatalogRefresh(signal) {
+      try {
+        const response = await fetch(REFRESH_ROUTE, {
+          method: 'POST', signal, headers: { accept: 'application/json' },
+        })
+        if (!response.ok) return { ok: false, code: 'NETWORK', message: '' }
+        const value = await response.json()
+        return isRefreshEnvelope(value) ? value : { ok: false, code: 'UNKNOWN', message: '' }
+      } catch {
+        return { ok: false, code: 'NETWORK', message: '' }
+      }
+    }
+
     /** 读取展示开关；读不到时按默认展示，避免把配置故障放大成界面消失。 */
     async function readOverlayEnabled(ctx) {
       try {
@@ -433,6 +494,10 @@ window.__ModuleLoader__.load({
           const [savingOverlay, setSavingOverlay] = React.useState(false)
           const [notice, setNotice] = React.useState('')
           const [revision, setRevision] = React.useState(0)
+          /** 主动刷新进行中：按钮置灰，避免连点叠加请求（运行时本身也会合并请求）。 */
+          const [refreshingModels, setRefreshingModels] = React.useState(false)
+          /** 瞬态提示（toast）：{ text, tone }，显示后自动消失。 */
+          const [toast, setToast] = React.useState(null)
 
           React.useEffect(() => {
             let active = true
@@ -458,6 +523,13 @@ window.__ModuleLoader__.load({
 
           /** 凭据引用变化时丢弃草稿与编辑态，避免把旧引用的密钥写进新引用。 */
           React.useEffect(() => { setEditing(false); setDraft('') }, [view.ref])
+
+          /** 瞬态提示到时自动消失；新提示到来时重置计时，避免前一条把后一条提前关掉。 */
+          React.useEffect(() => {
+            if (toast === null) return undefined
+            const timer = setTimeout(() => { setToast(null) }, TOAST_DURATION_MS)
+            return () => { clearTimeout(timer) }
+          }, [toast])
 
           /** 保存当前引用的密钥并重新读取状态，不回显密钥值。 */
           async function save(event) {
@@ -508,6 +580,40 @@ window.__ModuleLoader__.load({
             }
           }
 
+          /**
+           * 主动刷新模型目录，并用瞬态提示回报变化。
+           *
+           * 刷新由宿主运行时完成（与定时刷新共用同一请求），成功后宿主会发布
+           * `llm/adapters-updated`；这里再自增一次 revision 作为兜底，确保模型数量
+           * 与列表立即反映新目录。失败时保留旧目录，只提示用户重试。
+           */
+          async function refreshModels() {
+            if (refreshingModels) return
+            setRefreshingModels(true)
+            try {
+              const result = await requestCatalogRefresh()
+              if (result.ok !== true) {
+                setToast({ tone: 'error', text: t('refreshFailed') })
+                return
+              }
+              const added = result.added.length
+              const updated = result.updated.length
+              const removed = result.removed.length
+              setToast(added + updated + removed === 0
+                ? { tone: 'success', text: t('refreshUnchanged') }
+                : {
+                    tone: 'success',
+                    text: t('refreshResult')
+                      .replace('{a}', String(added))
+                      .replace('{u}', String(updated))
+                      .replace('{r}', String(removed)),
+                  })
+              setRevision(previous => previous + 1)
+            } finally {
+              setRefreshingModels(false)
+            }
+          }
+
           return h('section', { 'aria-label': t('title'), style: cardStyle },
             h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
               h('h3', { style: { margin: 0, fontSize: 14, fontWeight: 500 } }, t('title')),
@@ -535,13 +641,24 @@ window.__ModuleLoader__.load({
               t('showOverlay')),
             notice ? h('p', { role: 'status', style: { margin: 0, fontSize: 12 } }, notice) : null,
             view.error ? h('p', { role: 'alert', style: { margin: 0, fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, view.error) : null,
-            h('details', null,
-              h('summary', { style: { cursor: 'pointer', fontSize: 13 } }, `${view.models.length} ${t('models')}`),
-              view.models.length === 0
-                ? h('p', { style: { fontSize: 13 } }, t('empty'))
-                : h('ul', { style: { maxHeight: 220, overflow: 'auto', paddingLeft: 20, fontSize: 13 } },
-                  view.models.map(model => h('li', { key: model.id },
-                    h('code', null, model.id), model.name && model.name !== model.id ? ` — ${model.name}` : null))))
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              h('details', { style: { flex: 1, minWidth: 0 } },
+                h('summary', { style: { cursor: 'pointer', fontSize: 13 } }, `${view.models.length} ${t('models')}`),
+                view.models.length === 0
+                  ? h('p', { style: { fontSize: 13 } }, t('empty'))
+                  : h('ul', { style: { maxHeight: 220, overflow: 'auto', paddingLeft: 20, fontSize: 13 } },
+                    view.models.map(model => h('li', { key: model.id },
+                      h('code', null, model.id), model.name && model.name !== model.id ? ` — ${model.name}` : null)))),
+              h('button', {
+                type: 'button', style: refreshStyle, disabled: refreshingModels,
+                title: t('refreshModels'), 'aria-label': t('refreshModels'),
+                onClick: refreshModels,
+              }, refreshingModels ? t('refreshModelsBusy') : t('refreshModels'))),
+            toast === null ? null : h('div', {
+              role: 'status', 'aria-live': 'polite',
+              style: Object.assign({}, toastStyle, toast.tone === 'error'
+                ? { color: 'var(--dsw-alias-state-error-primary)' } : null),
+            }, toast.text)
           )
         }
 
