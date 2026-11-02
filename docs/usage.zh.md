@@ -96,6 +96,8 @@ node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live
 
 ![在 OpenCode Go (Live) 卡片中保存密钥并在模型选择器中选择 live 模型](img/add-key.gif)
 
+![在模型数量旁点击「刷新模型列表」，完成后提示新增、更新、移除的模型数量](img/refresh.png)
+
 ## 用量悬浮窗
 
 卡片中的**显示用量悬浮窗**开关控制右下角的用量控件。该开关写入插件配置 `showBalanceOverlay`，**未配置时的默认值是开启**，因此新装即显示，重启 profile 后保持。若宿主读取不到该字段（例如尚未写入过配置），同样按开启处理。

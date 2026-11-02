@@ -34,6 +34,10 @@ The plugin's card in **Settings → Models** — saving the API key in the edito
 
 ![Saving the API key in the OpenCode Go (Live) card and choosing a live model in the model picker](docs/img/add-key.gif)
 
+Refreshing the catalog on demand — click **Refresh model list** next to the model count and a transient notice reports the added, updated, and removed model counts:
+
+![Clicking Refresh model list in the OpenCode Go (Live) card](docs/img/refresh.png)
+
 ## Documentation
 
 - [Usage guide](docs/usage.md): installation, key setup, configuration, and troubleshooting.

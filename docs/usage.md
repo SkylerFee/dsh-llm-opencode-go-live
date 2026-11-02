@@ -96,6 +96,8 @@ The catalog comes from Models.dev and fetching it needs no API key; the key is r
 
 ![Saving the API key in the OpenCode Go (Live) card and choosing a live model in the model picker](img/add-key.gif)
 
+![Clicking Refresh model list next to the model count; the transient notice reports the added, updated, and removed model counts](img/refresh.png)
+
 ## Usage overlay
 
 The card's **Show usage overlay** switch controls the bottom-right usage control. It writes the plugin's `showBalanceOverlay` config, whose **default is on**, so a fresh install shows the control and the choice survives a profile restart. When the host cannot report the field (for example before any config write), it counts as on as well.

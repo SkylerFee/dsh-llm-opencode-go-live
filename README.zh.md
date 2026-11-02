@@ -34,6 +34,10 @@ dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 
 ![在 OpenCode Go (Live) 卡片中保存密钥并在模型选择器中选择 live 模型](docs/img/add-key.gif)
 
+主动刷新模型目录——点模型数量旁的「刷新模型列表」，完成后用瞬态提示给出新增、更新、移除的模型数量：
+
+![在 OpenCode Go (Live) 卡片中点击「刷新模型列表」](docs/img/refresh.png)
+
 ## 文档
 
 - [使用指南](docs/usage.zh.md)：安装、密钥配置、配置字段与故障排查。
