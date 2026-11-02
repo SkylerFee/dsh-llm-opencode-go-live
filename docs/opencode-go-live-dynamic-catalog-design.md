@@ -32,9 +32,10 @@ The plugin registers only the `opencode-go-live` route. The built-in DSH `openco
 | `src/policy.ts` | Take known protocol policies from the current pi-ai OpenCode Go model table and give unknown models the generic Completions policy. |
 | `src/transform.ts` | Validate source models and produce pi-ai models plus rejection diagnostics. |
 | `src/store.ts` | Read and write the in-memory or JSON catalog snapshot. |
+| `src/diff.ts` | Compare the previous and next catalogs to report added, updated, and removed models. |
 | `src/provider.ts` | Reuse `PiAiAdapter` and the pi-ai OpenCode Go transport, passing the session id upstream. |
-| `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, and credential resolution. |
-| `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing and the model list in the Models slot. |
+| `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, the manual refresh route, and credential resolution. |
+| `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing, a manual catalog refresh with a transient result notice, and the model list in the Models slot. |
 
 ## Catalog lifecycle
 
@@ -68,6 +69,12 @@ Once a conversion has completed and been saved successfully, the runtime replace
 
 The bundle sets `catalog.cachePath` by default to `cache/opencode-go-live.json` under the Harness home (`~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME` when set), so an installed bundle persists the catalog across restarts; a hand-mounted plugin that leaves the field unset keeps it in memory only. When `catalog.cachePath` is configured, JSON storage first writes a temporary file with mode `0600` and then replaces the snapshot with `rename`. The snapshot contains the check time, the converted models, and diagnostics; it never contains the API key, conversation requests, or responses. A snapshot that cannot be read or fails validation is treated as absent.
 
+## Manual refresh
+
+The Models card exposes a manual refresh next to the model count. `POST /api/opencode-go-live/refresh` awaits the same `refresh()` the scheduled job uses, so a click during a scheduled or startup refresh shares that request instead of starting a second one. On success the route answers with the model ids added, updated, and removed relative to the snapshot the runtime held before the refresh, plus the new total; the card renders those three counts as a transient notice that does not intercept pointer events and disappears on its own. The comparison is keyed by model id: a model present in both snapshots but with a different name, protocol, endpoint, limits, input modalities, reasoning flag, or compatibility fields counts as updated.
+
+A failed refresh keeps the previous catalog and reports the failure instead of showing counts; an empty change reports that the catalog is already up to date. The route is registered only when the host mounts the `connection` service, exactly like the balance route, so a host without it leaves the button reporting a failure rather than blocking the card.
+
 ## Models and protocols
 
 The Models.dev `opencode-go` catalog decides which models belong to the live route. Known models inherit the API protocol, endpoints, and compatibility parameters from the current pi-ai built-in model table; unknown models use the generic OpenAI Completions endpoint of OpenCode Go. The catalog never passes arbitrary source request headers or body fields upstream.
@@ -99,6 +106,8 @@ sequenceDiagram
 ```
 
 `apiKeyEnv` is a credential reference name, `OPENCODE_GO_LIVE_API_KEY` by default; that default is deliberately distinct from the `OPENCODE_GO_API_KEY` the Models page derives for the built-in `opencode-go` route, so the two routes never resolve one credential record. Neither the configuration nor the catalog cache stores the key value. The plugin card reads the current reference from the DSH settings description and then writes the key through the credentials service; the adapter resolves the current reference on every request. A missing credential or an unavailable service returns `MISSING_CREDENTIAL`. All three supported request protocols set `x-opencode-session` from the DSH session id so the upstream can recognize the same conversation.
+
+The same credential path also gates model visibility. On the current host line (`@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2`) `PiAiAdapter.listModels` resolves the API key first and returns an empty list when that fails with `MISSING_CREDENTIAL`, so a route whose credential is not configured still registers and appears in `ctx.llm.listProviders()` but declares no models; the host's built-in routes share that adapter and behave identically. The check runs on every call, so saving the key makes the models visible again without re-registering the route or publishing another topology notification.
 
 Media inputs reuse the host's durable attachment service. The adapter resolves the host `attachments` service (and the `fs` service for read-only path bridging) at request time, so image references in the request history — a `read_image` tool result or a pasted screenshot — are decoded, sized to the profile's request-image budget, and sent as image content exactly like the built-in routes. Without a mounted attachment service, a request carrying an image fails with `UNSUPPORTED_CONTENT` (`pi-ai image input requires the durable attachment service`) instead of silently dropping the image. File attachments are never sent as bytes on any route: request assembly projects every file block to deterministic handle text (name, byte size, and the read-only saved path). Declared input modalities come from the remote catalog's `modalities.input` intersected with `text` and `image`; a model that declares no image input receives text-only image placeholders.
 

@@ -6,7 +6,7 @@ This guide targets a DeepSeek Harness installation whose Web profile already sta
 
 ## Prerequisites and installation
 
-You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0` as peers; each range needs its explicit prerelease branch, or the harness's prerelease builds are excluded silently. The host must also provide `@earendil-works/pi-ai` `^0.87.1`; DSH resolves this peer to the host's pi-ai at runtime, including linked source installs. The plugin's pi-ai `0.87.1` development dependency supplies its standalone build and tests. The DSH Web profile must start correctly.
+You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0` as peers; each range needs its explicit prerelease branch, or the harness's prerelease builds are excluded silently — every new patch line the harness opens needs another branch, and `>=0.2.2-0` is already reserved for the next one. Never collapse the OR list into `>=0.2.0-0 <0.3.0-0`: one `0.2.0` tuple does not cover `0.2.1-rc.2` and would exclude the current host. The host must also provide `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`; DSH resolves this peer to the host's pi-ai at runtime, including linked source installs, and the range covers both the 0.87.1 line and the 1.x builds hosts ship (1.0.2, 1.1.0). The plugin's pi-ai `1.1.0` development dependency supplies its standalone build and tests. The DSH Web profile must start correctly.
 
 ### Install from npm
 
@@ -16,7 +16,7 @@ Installing from npm is recommended. Use the installed `dsh` CLI to add the publi
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-Without a version or tag, this installs `latest`. Append `@alpha` to follow prereleases, or `@0.2.3` to pin this release. Then restart the Web profile.
+Without a version or tag, this installs `latest`. Append `@alpha` to follow prereleases, or `@0.2.4` to pin this release. Then restart the Web profile.
 
 When running DSH from source, use this command from the DSH repository root:
 
@@ -45,9 +45,41 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 If `DSH_HOME` is set, check `profiles/web/node_modules/` under that directory instead.
 
-For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.3.tgz` from the DSH repository root.
+For an installation independent of the checkout, run `pnpm pack` in the built plugin directory and install the resulting tarball with `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.4.tgz` from the DSH repository root.
 
 Where the `dsh` CLI is already installed, the last line can also be `dsh plugin --profile web add ../dsh-llm-opencode-go-live` from the DSH repository root.
+
+#### Switching a profile from the npm build to a local build
+
+The host's plugin manager treats a package that already sits in the profile's dependencies as installed (`already-installed`) while HMR is available, so `add` is rejected until that entry is removed. `--profile` names the profile that is actually running — `desktop` for the desktop app, `web` for the Web client.
+
+```sh
+# 1) Build the local plugin; lib/ is gitignored and produced by the build
+cd /path/to/dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+
+# 2) Switch the profile over. Without a `dsh` CLI, call the CLI entry from the
+#    DSH checkout directly; it forwards the arguments to the profile's pnpm.
+DSH_CLI=/path/to/deepseek-harness/apps/cli/lib/bin.js
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add /path/to/dsh-llm-opencode-go-live
+```
+
+The profile records a `link:` dependency on the checkout (a symlink inside `node_modules`). Once it points at your directory, **quit the host completely and start it again**; afterwards a rebuild plus a restart is enough:
+
+```sh
+readlink ~/.dsh/profiles/desktop/node_modules/@skylerfee/dsh-llm-opencode-go-live
+```
+
+Installing a `pnpm pack` tarball (`add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.4.tgz`) works as well. That records a `file:` dependency and copies the files, so **keep the tarball where it is** — do not put it in a temporary directory (such as `tmp/`) that gets cleaned up, or the next `pnpm install` fails to find it.
+
+To return to the npm build:
+
+```sh
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live@0.2.4
+```
 
 The same install and enable flow driven from the Web client's plugin page:
 
@@ -58,10 +90,13 @@ The same install and enable flow driven from the Web client's plugin page:
 1. Start the Web profile, open **Settings → Models**, and find the plugin-owned **OpenCode Go (Live)** card.
 2. The card shows only the key status and the model list by default. Click **Edit**, enter the OpenCode Go key in the **API Key** field, and apply it — or click **Cancel** to discard the input. The key is written to the DSH credentials service and the page never echoes the stored value; the status line indicates that the reference is known to hold a credential.
 3. Wait for the dynamic catalog to load, expand the card's model list, or find the models under `opencode-go-live` in the model picker. Select one to start a conversation; to use it as the default model, choose this route and model in the DSH default-model settings.
+4. To check for upstream catalog changes immediately, click **Refresh model list** next to the model count. A transient notice then reports how many models were added, updated, and removed (or that the list is already up to date); a failed refresh keeps the last successful catalog and reports the failure. While refreshing, the button reads **Refreshing…** and is disabled.
 
 The catalog comes from Models.dev and fetching it needs no API key; the key is resolved only when a request actually reaches the OpenCode Go API. If a selected model still cannot be called, use [Troubleshooting](#troubleshooting) below to separate credential errors from upstream responses.
 
 ![Saving the API key in the OpenCode Go (Live) card and choosing a live model in the model picker](img/add-key.gif)
+
+![Clicking Refresh model list next to the model count; the transient notice reports the added, updated, and removed model counts](img/refresh.png)
 
 ## Usage overlay
 
@@ -143,7 +178,7 @@ llm-opencode-go-live:
 | `catalog.refreshTimeoutMs` | `10000` | Timeout for a single catalog request in milliseconds; `0` disables the timeout. |
 | `showBalanceOverlay` | `true` | Whether the usage overlay is shown; the Models card switch reads and writes it, and the host runtime never consumes it. |
 
-The catalog fields belong to plugin config; the plugin's Models card edits the API key and the usage-overlay switch. A refresh first tries to restore the snapshot; a failed refresh retains the most recent successful catalog. The API key is never written to the catalog snapshot.
+The catalog fields belong to plugin config; the plugin's Models card edits the API key, toggles the usage overlay, and can refresh the model catalog on demand. A refresh first tries to restore the snapshot; a failed refresh retains the most recent successful catalog. The API key is never written to the catalog snapshot.
 
 ## Troubleshooting
 

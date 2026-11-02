@@ -68,10 +68,27 @@ async function waitForModels(ctx: Context): Promise<void> {
 
 interface MountOptions {
   input?: ('text' | 'image')[]
-  /** 凭据服务替身；缺省返回未配置，请求以 MISSING_CREDENTIAL 结束。 */
+  /**
+   * 凭据服务替身；缺省使用可用的可撤销替身。
+   * 宿主线 `PiAiAdapter.listModels` 会先解析 API Key：凭据未配置时适配器不声明任何模型，
+   * 因此挂载期必须给可用凭据，`waitForModels` 才能等到模型；需要请求停在凭据阶段的用例
+   * 再自行 `revoke()`。
+   */
   credentials?: unknown
   /** 宿主附件服务替身；缺省不挂载。 */
   attachments?: unknown
+}
+
+/** 可撤销凭据替身：初始可用（挂载时模型可见），`revoke()` 后按调用视为未配置。 */
+function revocableCredentials(): {
+  resolve: () => Promise<{ value: string } | undefined>
+  revoke: () => void
+} {
+  let available = true
+  return {
+    resolve: async () => (available ? { value: 'test-key' } : undefined),
+    revoke: () => { available = false },
+  }
 }
 
 /** 挂载 LlmRuntime 与 Live 插件的最小 Harness，与真实会话共用同一条请求链路。 */
@@ -80,7 +97,8 @@ async function mountLive(options: MountOptions): Promise<{ ctx: Context; dispose
   const cachePath = join(directory, 'catalog.json')
   await new JsonCatalogStore(cachePath).save(snapshotWith(options.input ?? ['text', 'image']))
   const ctx = new Context()
-  ctx.provide('credentials', (options.credentials ?? { resolve: async () => undefined }) as never)
+  const credentials = options.credentials ?? revocableCredentials()
+  ctx.provide('credentials', credentials as never)
   if (options.attachments !== undefined) ctx.provide('attachments', options.attachments as never)
   await ctx.plugin(LlmRuntime)
   const fiber = await ctx.plugin(Live, {
@@ -179,8 +197,11 @@ test('附件解析后图片执行世界桥接被调用', async () => {
 })
 
 test('file 块输入在 live 路由下穿过请求组装而不被拒绝', async () => {
-  const { ctx, dispose } = await mountLive({})
+  const credentials = revocableCredentials()
+  const { ctx, dispose } = await mountLive({ credentials })
   try {
+    // 挂载时凭据可用（模型可见），请求前撤销凭据使请求必须停在凭据阶段而不触网。
+    credentials.revoke()
     const finish = await runRequest(ctx, [fileMessage])
     // 文件块在请求组装层投影为句柄文本后到达凭据阶段，全程没有 UNSUPPORTED_CONTENT。
     assert.equal(finish.reason.kind, 'error')
@@ -191,8 +212,10 @@ test('file 块输入在 live 路由下穿过请求组装而不被拒绝', async 
 })
 
 test('未声明图片输入的模型收到图片时由请求组装降级为文本', async () => {
-  const { ctx, dispose } = await mountLive({ input: ['text'] })
+  const credentials = revocableCredentials()
+  const { ctx, dispose } = await mountLive({ input: ['text'], credentials })
   try {
+    credentials.revoke()
     const finish = await runRequest(ctx, [imageMessage])
     assert.equal(finish.reason.kind, 'error')
     assert.equal(finish.reason.failure.code, 'MISSING_CREDENTIAL')

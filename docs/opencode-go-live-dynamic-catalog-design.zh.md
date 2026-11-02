@@ -32,9 +32,10 @@ flowchart LR
 | `src/policy.ts` | 从当前 pi-ai OpenCode Go 模型表取得已知协议策略，为未知模型提供通用 Completions 策略。 |
 | `src/transform.ts` | 校验来源模型，产出 pi-ai 模型和拒绝诊断。 |
 | `src/store.ts` | 读取和保存内存或 JSON 目录快照。 |
+| `src/diff.ts` | 比较前后两份目录，产出新增、更新和移除的模型。 |
 | `src/provider.ts` | 复用 `PiAiAdapter` 和 pi-ai OpenCode Go 传输，将会话 ID 传给上游。 |
-| `src/index.ts` | 注册 Cordis 插件、模型路由、刷新任务和凭据解析。 |
-| `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供按需展开的密钥编辑和模型列表。 |
+| `src/index.ts` | 注册 Cordis 插件、模型路由、刷新任务、主动刷新路由和凭据解析。 |
+| `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供按需展开的密钥编辑、带瞬态结果提示的主动刷新和模型列表。 |
 
 ## 目录生命周期
 
@@ -68,6 +69,12 @@ sequenceDiagram
 
 bundle 默认把 `catalog.cachePath` 设为 Harness home 下的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下），因此默认安装即跨重启持久化；手工挂载且未设置该字段时只保存于内存。配置该路径时，JSON 存储先写权限为 `0600` 的临时文件，再通过 `rename` 替换快照。快照包含检查时间、转换后的模型和诊断，不包含 API Key、对话请求或响应。无法读取或未通过校验的快照按不存在处理。
 
+## 主动刷新
+
+模型提供商卡片在模型数量旁提供主动刷新按钮。`POST /api/opencode-go-live/refresh` 等待与定时任务同一个 `refresh()`，因此在定时刷新或启动刷新进行中点击只会共用那次请求，不会并发发起第二次。成功后路由返回相对刷新前快照的新增、更新、移除模型 id 以及新的模型总数；卡片把这三个数字渲染为瞬态提示，提示不拦截指针事件并自动消失。比较以模型 id 为键：两份快照都存在的模型若名称、协议、端点、上限、输入模态、推理标记或兼容字段不同，计为更新。
+
+刷新失败时保留旧目录并报告失败，不显示数字；没有变化时提示目录已是最新。与余额路由一样，该路由只在宿主挂载 `connection` 服务时注册，因此没有该服务的宿主上按钮会报告失败，而不会阻塞卡片。
+
 ## 模型与协议
 
 Models.dev 的 `opencode-go` 目录决定模型是否属于 live 路由。已知模型从当前 pi-ai 内置模型表继承 API 协议、端点和兼容参数；未知模型使用 OpenCode Go 的通用 OpenAI Completions 端点。目录不会把任意来源请求头或请求体字段传给上游。
@@ -99,6 +106,8 @@ sequenceDiagram
 ```
 
 `apiKeyEnv` 是凭据引用名称，默认 `OPENCODE_GO_LIVE_API_KEY`；该默认名刻意不同于 Models 页为内置 `opencode-go` 路由派生的 `OPENCODE_GO_API_KEY`，两条路由不会解析同一条凭据记录。配置和目录缓存均不保存密钥值。插件卡片从 DSH 设置描述读取当前引用，再通过凭据服务写入密钥；适配器在每次请求时解析当前引用。凭据缺失或服务不可用时返回 `MISSING_CREDENTIAL`。三个受支持的请求协议均从 DSH 会话 ID 设置 `x-opencode-session`，供上游识别同一对话。
+
+同一条凭据链路也决定模型可见性。在宿主线（`@deepseek-ai/dsh-llm-pi-ai@0.2.1-rc.2`）上，`PiAiAdapter.listModels` 会先解析 API Key，解析失败（`MISSING_CREDENTIAL`）时返回空列表，因此凭据未配置的路由仍会注册并出现在 `ctx.llm.listProviders()`，但不声明任何模型；宿主内置路由共用同一适配器，行为一致。该检查在每次调用时执行，因此保存密钥后模型重新可见，无需重新注册路由，也不会再发布一次拓扑通知。
 
 媒体输入复用宿主的 durable 附件服务。适配器在请求时解析宿主 `attachments` 服务（以及用于只读路径桥接的 `fs` 服务），因此请求历史中的图片引用——`read_image` 工具结果或粘贴的截图——会按 profile 的请求图片预算解码缩放后作为图片内容发送，与内置路由完全一致。未挂载附件服务时，携带图片的请求以 `UNSUPPORTED_CONTENT`（`pi-ai image input requires the durable attachment service`）失败，而不是静默丢弃图片。文件附件在任何路由上都不会以原始字节发送：请求组装层把每个文件块投影为确定性句柄文本（名称、字节数和只读保存路径）。声明的输入模态取远端目录 `modalities.input` 与 `text`、`image` 的交集；未声明图片输入的模型收到纯文本图片占位。
 

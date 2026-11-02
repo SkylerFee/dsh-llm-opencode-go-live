@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用。插件保留 pi-ai `0.87.1` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除；宿主每开一条新的 patch 线都需要再补一条分支，其中 `>=0.2.2-0` 分支已为下一条线预留。不要把它们合并成 `>=0.2.0-0 <0.3.0-0`：单个 `0.2.0` 元组覆盖不到 `0.2.1-rc.2`，反而会把当前宿主排除在外。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；该范围同时覆盖 0.87.1 线和宿主实际提供的 1.x 构建（1.0.2、1.1.0）。插件保留 pi-ai `1.1.0` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
 
 ### 从 npm 安装
 
@@ -16,7 +16,7 @@
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.3`。安装后重启 Web profile。
+不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.2.4`。安装后重启 Web profile。
 
 从源码运行 DSH 时，在 DSH 仓库根目录执行：
 
@@ -45,9 +45,41 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 
 如果设置了 `DSH_HOME`，则在该目录下的 `profiles/web/node_modules/` 中检查。
 
-如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.3.tgz` 安装生成的 tarball。
+如果希望安装后不依赖源码目录，可在已构建的插件目录运行 `pnpm pack`，再从 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.4.tgz` 安装生成的 tarball。
 
 已安装 `dsh` CLI 的环境，也可在 DSH 仓库根目录将最后一行改为 `dsh plugin --profile web add ../dsh-llm-opencode-go-live`。
+
+#### 已装 npm 版时切换到本地构建
+
+要把正在运行的 profile 从 npm 版切到本地构建，必须先移除再安装：宿主的插件管理在 HMR 可用时会把"已在依赖里"的包判为已安装（`already-installed`），直接 `add` 会被拒绝。`--profile` 取实际在跑的 profile——桌面应用是 `desktop`，Web 客户端是 `web`。
+
+```sh
+# 1) 构建本地插件；产物 lib/ 在 .gitignore 内，由构建生成
+cd /path/to/dsh-llm-opencode-go-live
+pnpm install
+pnpm run check
+
+# 2) 切换到本地目录。没有 dsh CLI 时，直接调用 DSH 源码里的 CLI 入口，
+#    它把参数转发给 profile 目录的 pnpm
+DSH_CLI=/path/to/deepseek-harness/apps/cli/lib/bin.js
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add /path/to/dsh-llm-opencode-go-live
+```
+
+profile 会把插件记为指向源码目录的 `link:` 依赖（`node_modules` 里是软链）。确认指向后，**完全退出宿主再启动**；之后改动代码只需重新 `pnpm run build` 并重启宿主：
+
+```sh
+readlink ~/.dsh/profiles/desktop/node_modules/@skylerfee/dsh-llm-opencode-go-live
+```
+
+也可以先 `pnpm pack` 再安装生成的 tarball（`add /absolute/path/to/skylerfee-dsh-llm-opencode-go-live-0.2.4.tgz`）。这种安装记录的是 `file:` 依赖、目录是实体副本，因此 **tarball 必须留在原位置**——不要放在会被清理的临时目录（例如 `tmp/`）里，否则下次 `pnpm install` 会因找不到文件而失败。
+
+验证完成后，若想回到 npm 版：
+
+```sh
+node "$DSH_CLI" plugin --profile desktop remove @skylerfee/dsh-llm-opencode-go-live
+node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live@0.2.4
+```
 
 同样的安装与启用流程也可以在 Web 客户端的插件页完成：
 
@@ -58,10 +90,13 @@ ls ~/.dsh/profiles/web/node_modules/@skylerfee/dsh-llm-opencode-go-live/lib/inde
 1. 启动 Web profile，打开 **Settings → Models**，找到由插件提供的 **OpenCode Go (Live)** 卡片。
 2. 卡片默认只显示密钥状态和模型列表；点击“编辑”后在 **API Key** 输入框填写 OpenCode Go 密钥并应用，或点击“取消”放弃输入。密钥写入 DSH 凭据服务，页面不会回显已保存的值；状态提示表示已确认该引用有凭据。
 3. 等待动态目录加载，展开卡片的模型列表，或在模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
+4. 需要立即核对上游目录变化时，点模型数量旁的“刷新模型列表”。刷新完成后会出现瞬态提示，给出新增、更新、移除的模型数量（没有变化时提示已是最新）；刷新失败会保留上次成功目录并提示失败。刷新进行中按钮显示“刷新中…”并置灰。
 
 模型目录来自 Models.dev，获取目录不需要 API Key；真正请求 OpenCode Go API 时才会解析密钥。选择模型后若仍无法调用，请按下方[排查](#排查)先区分凭据错误与上游响应。
 
 ![在 OpenCode Go (Live) 卡片中保存密钥并在模型选择器中选择 live 模型](img/add-key.gif)
+
+![在模型数量旁点击「刷新模型列表」，完成后提示新增、更新、移除的模型数量](img/refresh.png)
 
 ## 用量悬浮窗
 
@@ -143,7 +178,7 @@ llm-opencode-go-live:
 | `catalog.refreshTimeoutMs` | `10000` | 单次目录请求超时，单位毫秒；`0` 禁用超时。 |
 | `showBalanceOverlay` | `true` | 是否显示用量悬浮窗；由 Models 卡片内的开关读写，Host 运行时不读取该值。 |
 
-目录字段由插件配置管理，插件的 Models 卡片仅编辑 API Key 与用量悬浮窗开关。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
+目录字段由插件配置管理，插件的 Models 卡片编辑 API Key、切换用量悬浮窗开关，并可主动刷新模型目录。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。
 
 ## 排查
 

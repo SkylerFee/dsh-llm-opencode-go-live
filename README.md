@@ -2,13 +2,13 @@
 
 English | [中文](README.zh.md)
 
-[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.3](https://img.shields.io/badge/release-v0.2.3-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![npm downloads](https://img.shields.io/npm/dt/@skylerfee/dsh-llm-opencode-go-live.svg?label=npm%20downloads)](https://www.npmjs.com/package/@skylerfee/dsh-llm-opencode-go-live) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
+[![CI](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Node: >=22.19](https://img.shields.io/badge/Node-%3E%3D22.19-brightgreen.svg)](https://nodejs.org) [![Release: v0.2.4](https://img.shields.io/badge/release-v0.2.4-orange.svg)](https://github.com/SkylerFee/dsh-llm-opencode-go-live/releases) [![npm downloads](https://img.shields.io/npm/dt/@skylerfee/dsh-llm-opencode-go-live.svg?label=npm%20downloads)](https://www.npmjs.com/package/@skylerfee/dsh-llm-opencode-go-live) [![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/skylerfee/dsh-llm-opencode-go-live)
 
-An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, contributes its own Models settings card, and uses pi-ai for model requests. The built-in `opencode-go` route remains available. A switch in that card renders the OpenCode Go subscription usage in a frame-wide floating panel.
+An OpenCode Go live model catalog plugin for DeepSeek Harness. It reads the `opencode-go` catalog from Models.dev, registers the separate `opencode-go-live` route, contributes its own Models settings card, and uses pi-ai for model requests. The card can refresh the catalog on demand and reports the added, updated, and removed model counts in a transient notice. The built-in `opencode-go` route remains available. A switch in that card renders the OpenCode Go subscription usage in a frame-wide floating panel.
 
 ## Quick Start
 
-Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0`. Every range carries an explicit prerelease branch: node-semver admits a prerelease only against a comparator on the same `major.minor.patch` tuple, so a range without one silently excludes every prerelease build of the harness. The image-input hooks it wires in ship in those versions. The host must also provide `@earendil-works/pi-ai` `^0.87.1`: DSH resolves this peer to the host's pi-ai at runtime, including linked source installs. The plugin keeps pi-ai `0.87.1` as a development dependency for its own build and tests.
+Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and DeepSeek Harness 0.1.7-rc.1 or newer are required. The plugin's peers are `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` together with `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai` and `@deepseek-ai/dsh-settings` at `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`. Every range carries an explicit prerelease branch: node-semver admits a prerelease only against a comparator on the same `major.minor.patch` tuple, so a range without one silently excludes every prerelease build of the harness — every new patch line the harness opens needs another branch, and the `>=0.2.2-0` branch is already reserved for the next one. Never collapse the OR list into `>=0.2.0-0 <0.3.0-0`: one `0.2.0` tuple does not cover `0.2.1-rc.2` and would exclude the current host. The image-input hooks it wires in ship in those versions. The host must also provide `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`: DSH resolves this peer to the host's pi-ai at runtime, including linked source installs, and the range covers both the 0.87.1 line and the 1.x builds hosts ship (1.0.2, 1.1.0). The plugin keeps pi-ai `1.1.0` as a development dependency for its own build and tests.
 
 Install from npm (recommended) into the Web profile with the installed `dsh` CLI:
 
@@ -16,7 +16,7 @@ Install from npm (recommended) into the Web profile with the installed `dsh` CLI
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-This installs the npm `latest` tag. To follow prereleases, append `@alpha`; to pin this release, append `@0.2.3`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
+This installs the npm `latest` tag. To follow prereleases, append `@alpha`; to pin this release, append `@0.2.4`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
 
 Installing the package and enabling it from the Web client's plugin page:
 
@@ -33,6 +33,10 @@ The overlay in the browser — the chip expands into the full panel on hover and
 The plugin's card in **Settings → Models** — saving the API key in the editor, the dynamic model list after the catalog resolves, and the live models in their own group in the model picker, with the reasoning level beside them:
 
 ![Saving the API key in the OpenCode Go (Live) card and choosing a live model in the model picker](docs/img/add-key.gif)
+
+Refreshing the catalog on demand — click **Refresh model list** next to the model count and a transient notice reports the added, updated, and removed model counts:
+
+![Clicking Refresh model list in the OpenCode Go (Live) card](docs/img/refresh.png)
 
 ## Documentation
 

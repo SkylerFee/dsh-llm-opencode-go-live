@@ -7,6 +7,7 @@ import { Config, resolveConfig } from './config.js'
 import type { ResolvedConfig } from './config.js'
 import { createUsageSource } from './balance.js'
 import type { UsageEnvelope, UsageSource } from './balance.js'
+import { diffCatalogs } from './diff.js'
 import { createDynamicAdapter, ROUTE_ID } from './provider.js'
 import { createModelsSource } from './source.js'
 import type { ModelsSource } from './source.js'
@@ -18,6 +19,8 @@ export { Config, resolveConfig } from './config.js'
 export type { CatalogConfig, ResolvedConfig } from './config.js'
 export { createUsageSource, OPENCODE_GO_USAGE_URL, parseUsageResponse } from './balance.js'
 export type { UsageEnvelope, UsageErrorCode, UsageReport, UsageSource, UsageWindow } from './balance.js'
+export { diffCatalogs } from './diff.js'
+export type { CatalogDiff } from './diff.js'
 export { OPEN_CODE_GO_POLICIES, policyFor } from './policy.js'
 export type { OpenCodeGoApi, OpenCodeGoPolicy } from './policy.js'
 export { createModelsSource } from './source.js'
@@ -36,6 +39,8 @@ const MAX_STARTUP_RETRIES = 4
 
 /** 浏览器可访问的余额路由；client.js 以平行常量引用同一路径。 */
 export const BALANCE_ROUTE_PATH = '/api/opencode-go-live/balance'
+/** 浏览器可访问的主动刷新路由；client.js 以平行常量引用同一路径。 */
+export const REFRESH_ROUTE_PATH = '/api/opencode-go-live/refresh'
 const USAGE_TIMEOUT_MS = 10_000
 
 /**
@@ -232,6 +237,37 @@ async function balanceRoute(
 }
 
 /**
+ * 主动刷新路由处理器：把目录刷新交给运行时，并回报相对上一份目录的变化。
+ *
+ * 与定时刷新和启动刷新共用同一个 `refresh()`，因此并发点击不会叠加请求；刷新失败时
+ * 运行时保留旧目录，这里只回报失败，由界面提示用户重试。认证由 `/api` 桥在到达本
+ * 处理器之前完成，与余额路由相同；响应始终 HTTP 200，客户端按 envelope 渲染。
+ * 导出以便测试直接注入替身运行时（避免测试访问真实 Models.dev）。
+ * @param runtime - 目录运行时。
+ * @returns JSON 响应：成功时给出新增/移除/更新的模型 id 与模型总数。
+ */
+export async function refreshRoute(runtime: OpenCodeGoLiveRuntime): Promise<Response> {
+  const before = runtime.getSnapshot()
+  const snapshot = await runtime.refresh()
+  if (snapshot === undefined) {
+    return new Response(JSON.stringify({
+      ok: false,
+      code: 'REFRESH_FAILED',
+      message: 'llm-opencode-go-live: catalog refresh failed; the previous catalog is kept',
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const diff = diffCatalogs(before, snapshot)
+  return new Response(JSON.stringify({
+    ok: true,
+    checkedAt: snapshot.checkedAt,
+    total: snapshot.models.length,
+    added: diff.added,
+    removed: diff.removed,
+    updated: diff.updated,
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+/**
  * Cordis 插件入口。插件直接注册 Harness 原生 LLM 适配器。
  * @param ctx - Cordis 上下文。
  * @param config - 插件配置。
@@ -270,7 +306,7 @@ export function apply(
       },
     ),
   )
-  // 余额路由是可选能力：纯 CLI composition 不挂载 connection，此时不注册也不报错。
+  // 余额路由与主动刷新路由都是可选能力：纯 CLI composition 不挂载 connection，此时不注册也不报错。
   ctx.inject(['connection'], (child) => {
     const connection = (child as ContextWithConnection).connection
     if (connection === undefined) return
@@ -279,6 +315,12 @@ export function apply(
       methods: ['GET'],
       requestBody: 'buffered',
       fetch: request => balanceRoute(child, () => config.apiKeyEnv.get(), usageSource, request),
+    }))
+    child.effect(() => connection.fetch.register({
+      path: REFRESH_ROUTE_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: () => refreshRoute(runtime),
     }))
   })
   void runtime.start().catch(error => {
