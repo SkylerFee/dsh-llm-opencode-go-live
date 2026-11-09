@@ -696,9 +696,9 @@ test('收缩态渲染圆环，悬停升为长条，点击展开显示三个计�
     const brief = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip')!
     assert.ok(brief, '悬停后升为长条形态')
     assert.ok(find(brief, node => node.props?.style?.height === 4), '长条形态保留横条进度')
-    // 长条主体本身也是按钮（点击进入完整态），因此按元素数断言四个操作按钮 + 一个主体按钮。
+    // 主体是纯展示，只有四个操作按钮；进入完整态的唯一入口是「展开」按钮。
     const briefButtons = collectButtons(brief)
-    assert.equal(briefButtons.length, 5, '长条形态 = 主体按钮 + 四个操作按钮')
+    assert.equal(briefButtons.length, 4, '长条形态只有四个操作按钮，主体不可点击')
     assert.deepEqual(
       [...new Set(briefButtons.map(button => button.props['aria-label']))].sort(),
       [
@@ -709,6 +709,12 @@ test('收缩态渲染圆环，悬停升为长条，点击展开显示三个计�
       ].sort(),
       '悬停态必须显示全部四个操作按钮',
     )
+    // 回归守护：长条主体曾是按钮，点它也会展开，导致「hover 后随手点一下」就进完整态。
+    // 现在主体是纯展示，进入完整态的唯一入口是「展开」按钮。
+    const chipMain = find(brief, node => node.props['data-opencode-go-live-overlay'] === 'chip-main')!
+    assert.equal(chipMain.type, 'span', '长条主体必须是纯展示元素，不能是按钮')
+    assert.equal(chipMain.props.onClick, undefined, '长条主体不得绑定点击处理')
+    assert.equal(chipMain.props.style?.cursor, undefined, '纯展示主体不得显示可点击光标')
 
     // ③ 完整态：点击展开显示三个窗口行。
     overlay.toggleFull()

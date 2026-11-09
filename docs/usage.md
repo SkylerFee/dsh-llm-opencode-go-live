@@ -120,7 +120,7 @@ The ring and its text share one colour whose meaning matches the full panel: gre
 | --- | --- |
 | Move the mouse onto the collapsed form | Promotes it to the brief form, where all four action buttons appear. |
 | Move the mouse off the brief form | Returns to the collapsed form automatically. |
-| Click the brief body, or click Expand | Enters the full form with the three billing windows. |
+| Click the Expand button | Enters the full form with the three billing windows. The brief body is display-only and clicking it does nothing — **this button is the only way in**. |
 | Move the mouse off the full form | **Nothing happens.** The full form exists to read the windows, so only Collapse leaves it. |
 | Click Collapse | Returns to the brief form; if the pointer is still over the control it stays brief, and only a pointer leave returns it to collapsed. |
 | Click / Enter / Space on the collapsed form | Enters the brief form. Touch devices have no hover, so this is their only entry point. |

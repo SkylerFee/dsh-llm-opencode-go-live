@@ -149,9 +149,10 @@ window.__ModuleLoader__.load({
       background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)',
       boxShadow: '0 4px 14px rgba(0, 0, 0, 0.14)',
     }
+    /** 长条态主体：纯展示（进度条 + 百分比），不可点击，因此不带 pointer 光标。 */
     const chipMainStyle = {
-      display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, cursor: 'pointer',
-      border: 0, background: 'transparent', color: 'inherit', font: 'inherit',
+      display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0,
+      background: 'transparent', color: 'inherit', font: 'inherit',
     }
     /**
      * 收缩态（ring）外观：自适应宽度的胶囊，左侧圆环 + 右侧 `Go-32%` 文字。
@@ -1224,15 +1225,8 @@ window.__ModuleLoader__.load({
             // 悬停态：沿用原 chip 的长条形态（横条 + 百分比），补全全部操作按钮。
             return h('div', anchorProps,
             h('div', { 'data-opencode-go-live-overlay': 'chip', style: chipStyle },
-              h(TipButton, {
-                tip: t('expandOverlay'),
-                buttonProps: {
-                  type: 'button', style: chipMainStyle,
-                  'data-opencode-go-live-overlay': 'chip-main',
-                  // 点击主体进入完整卡片；触摸设备由此看到三个窗口。
-                  onClick: () => { if (!draggedRecently()) setMode(OVERLAY_MODE_FULL) },
-                },
-              },
+              // 主体是纯展示：只有「展开」按钮能进入完整态，点击主体不再触发。
+              h('span', { 'data-opencode-go-live-overlay': 'chip-main', style: chipMainStyle },
               h('span', { style: { fontWeight: 500 } }, t('chipTitle')),
               h('div', { style: { ...trackStyle, width: 56 } },
                 rollingPercent === null
