@@ -346,37 +346,94 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
 
 /** 无 DOM 的假 React：函数式初始值按真实语义执行，effect 在渲染后统一结算。 */
 function createFakeReact() {
-  const state: unknown[] = []
-  const effects: { deps: unknown[]; dispose?: () => void }[] = []
-  const pending: { index: number; run: () => () => void; deps: unknown[] }[] = []
+  // 每个组件实例拥有独立的 hook 序列：key 是「父组件渲染路径」，与真实 React
+  // 按组件实例分槽的行为一致。这样条件分支里多调/少调 hook 才会被发现。
+  const slots = new Map<string, { state: unknown[]; effects: { deps: unknown[]; dispose?: () => void }[]; hookCount: number }>()
+  const pending: { run: () => void; slot: string; index: number; deps: unknown[] }[] = []
   let cursor = 0
+  let currentSlot = 'root'
+  /** 取当前组件的 hook 槽位，首次出现时创建。 */
+  function slotOf(name: string) {
+    let slot = slots.get(name)
+    if (slot === undefined) {
+      slot = { state: [], effects: [], hookCount: 0 }
+      slots.set(name, slot)
+    }
+    return slot
+  }
+  /**
+   * 校验「同一组件实例每轮渲染的 hook 数一致」——真实 React 的硬性规则。
+   * 缺了这条校验，把带 hook 的函数组件当普通函数调用（hook 落进父组件序列、
+   * 且调用点在各形态分支里数量不同）在测试里完全看不出来，上线才崩。
+   */
+  function assertHookStability(name: string, count: number) {
+    const slot = slotOf(name)
+    if (slot.hookCount !== 0 && slot.hookCount !== count) {
+      throw new Error(
+        `违反 Hooks 规则：组件「${name}」上一轮渲染调用了 ${slot.hookCount} 个 hook，本轮 ${count} 个。`
+        + '真实 React 会抛「Rendered more hooks than during the previous render」并让组件崩溃。'
+        + '带 hook 的函数组件必须用 h(Component) 渲染，不能当普通函数调用。',
+      )
+    }
+    slot.hookCount = count
+  }
   const React = {
-    createElement: (type: string, props: Record<string, any> | null, ...children: unknown[]): Element => ({
-      type, props: props ?? {}, children,
-    }),
+    createElement: (type: unknown, props: Record<string, any> | null, ...children: unknown[]): any => {
+      // 函数组件立即展开——与真实 React 渲染子组件一致，其 hook 记在独立槽位。
+      if (typeof type === 'function') {
+        const savedSlot = currentSlot
+        const savedCursor = cursor
+        const childSlot = `${savedSlot}/${(type as Function).name || 'anon'}`
+        currentSlot = childSlot
+        cursor = 0
+        try {
+          const rendered = (type as Function)({ ...(props ?? {}), children })
+          assertHookStability(childSlot, cursor)
+          return rendered
+        } finally {
+          currentSlot = savedSlot
+          cursor = savedCursor
+        }
+      }
+      return { type, props: props ?? {}, children }
+    },
     useState(initial: unknown) {
+      const slot = slotOf(currentSlot)
       const index = cursor++
-      if (!(index in state)) state[index] = typeof initial === 'function' ? (initial as () => unknown)() : initial
-      return [state[index], (next: any) => { state[index] = typeof next === 'function' ? next(state[index]) : next }]
+      if (!(index in slot.state)) {
+        slot.state[index] = typeof initial === 'function' ? (initial as () => unknown)() : initial
+      }
+      return [slot.state[index], (next: any) => {
+        slot.state[index] = typeof next === 'function' ? next(slot.state[index]) : next
+      }]
     },
     useEffect(run: () => () => void, deps: unknown[]) {
+      const slot = slotOf(currentSlot)
       const index = cursor++
-      const previous = effects[index]
+      const previous = slot.effects[index]
       if (previous === undefined || deps.some((value, position) => value !== previous.deps[position])) {
         previous?.dispose?.()
-        pending.push({ index, run, deps })
+        pending.push({ run, slot: currentSlot, index, deps })
       }
     },
   }
   return {
     React,
     render(component: (props: { t: (key: string) => string }) => Element | null, props: { t: (key: string) => string }): Element | null {
+      currentSlot = 'root'
       cursor = 0
       const tree = component(props)
-      for (const next of pending.splice(0)) effects[next.index] = { deps: next.deps, dispose: next.run() }
+      assertHookStability('root', cursor)
+      for (const next of pending.splice(0)) {
+        const slot = slotOf(next.slot)
+        // deps 必须回写真实依赖：写空会让下一轮误判「依赖变了」而反复重跑副作用。
+        slot.effects[next.index] = { deps: next.deps, dispose: next.run() }
+      }
       return tree
     },
-    dispose() { for (const effect of effects) effect?.dispose?.() },
+    dispose() {
+      for (const slot of slots.values()) for (const effect of slot.effects) effect?.dispose?.()
+    },
   }
 }
 
@@ -500,6 +557,41 @@ async function mountOverlay(options: {
   }
 }
 
+test('三态互切时悬浮窗组件的 hook 数量保持稳定，不会因形态变化崩溃', async () => {
+  // 回归守护：v0.2.4 之后曾把带 hook 的提示按钮当普通函数调用，调用点又分布在各形态
+  // 分支里，导致 ring/brief/full 的 hook 数不同。真实 React 会抛
+  // 「Rendered more hooks than during the previous render」并让整个悬浮窗消失。
+  // 沙箱的 render 已内置 hook 稳定性校验，这里把三态来回切两轮以确保覆盖。
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    // ring → brief（悬停）
+    overlay.hover()
+    overlay.render()
+    // brief → full（点展开）
+    overlay.toggleFull()
+    overlay.render()
+    // full → brief（点收起）
+    overlay.toggleFull()
+    overlay.render()
+    // brief → ring（移出）
+    overlay.unhover()
+    overlay.render()
+    // 再来一轮，确认槽位没有被前一轮污染
+    overlay.hover()
+    overlay.render()
+    overlay.toggleFull()
+    overlay.render()
+    // 能渲染出完整面板即说明三态互切没有让组件崩溃
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'),
+      '三态多次互切后仍必须正常渲染',
+    )
+  } finally {
+    overlay.restore()
+  }
+})
+
 test('按钮悬浮提示延迟出现、移出与按下立即消失，禁用按钮不显示', async () => {
   // client bundle 的 TOOLTIP_DELAY_MS 平行定义。
   const TOOLTIP_DELAY_MS = 220
@@ -509,14 +601,21 @@ test('按钮悬浮提示延迟出现、移出与按下立即消失，禁用按�
     await overlay.ready()
     overlay.hover()
 
-    /** 当前渲染树里是否有可见的提示气泡（同一时刻最多一个）。 */
+    /** 当前渲染树里可见的提示气泡（同一时刻最多一个）。 */
     const tipOf = () => find(
       overlay.render(), node => node.props?.['data-opencode-go-live-overlay'] === 'tooltip',
     )
+    /** 提示气泡的文案；没有提示时返回 undefined。 */
+    const tipText = () => tipOf()?.children[0]
     /** 取某个按钮元素（内层 button 带 data-* 标记）。 */
     const buttonOf = (marker: string) => find(
       overlay.render(), node => node.props?.['data-opencode-go-live-overlay'] === marker,
     )!
+    /** 按提示文案定位提示气泡：多个按钮各有独立实例，只认目标那个。 */
+    const tipByText = (text: string) => find(
+      overlay.render(), node => node.props?.['data-opencode-go-live-overlay'] === 'tooltip'
+        && node.props['data-tip'] === text,
+    )
 
     // 初始无提示
     assert.equal(tipOf(), undefined, '未悬停时不得显示提示')
@@ -531,8 +630,8 @@ test('按钮悬浮提示延迟出现、移出与按下立即消失，禁用按�
     // 到期：显示，且文案来自词典短标签
     clock.now += 2
     overlay.flushTimers()
-    const tip = tipOf()
-    assert.ok(tip, '到期后必须显示提示')
+    const tip = tipByText(overlay.dictionary.pinOverlay)
+    assert.ok(tip, '到期后必须显示 pin 的提示')
     assert.equal(tip.props.role, 'tooltip', '提示必须带 tooltip 角色')
     assert.equal(tip.children[0], overlay.dictionary.pinOverlay, '提示文案使用现有短标签')
     assert.equal(tip.props.style.pointerEvents, 'none', '提示不得参与点击命中')
