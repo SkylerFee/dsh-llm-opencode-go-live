@@ -169,8 +169,14 @@ window.__ModuleLoader__.load({
       display: 'inline-flex', alignItems: 'center',
       color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
     }
-    /** 圆环底轨与进度弧：进度弧从 12 点起顺时针填充，弧长与已用占比同义。 */
-    const ringTrackStyle = { fill: 'none', stroke: 'var(--dsw-alias-bg-layer-3)', strokeWidth: RING_STROKE }
+    /**
+     * 圆环底轨：用 `border-l3` 而不是 `bg-layer-3`。
+     * 浅色主题下 `bg-layer-1/2/3` 全部解析为同一个 `#fff`，底轨与胶囊背景同色，
+     * 圆环只剩进度弧、看不出「圈」。
+     * 改用 `label-tertiary`：浅色 `#81858c`、深色 `#adb2b8`，两主题都有足够对比
+     * （约 3.5:1 / 6:1），既能读出刻度又不会压过进度弧。
+     */
+    const ringTrackStyle = { fill: 'none', stroke: 'var(--dsw-alias-label-tertiary)', strokeWidth: RING_STROKE }
     const ringValueStyle = {
       fill: 'none', strokeWidth: RING_STROKE, strokeLinecap: 'round',
       transform: 'rotate(-90deg)', transformOrigin: 'center',
