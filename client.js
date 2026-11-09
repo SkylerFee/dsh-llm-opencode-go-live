@@ -170,11 +170,10 @@ window.__ModuleLoader__.load({
       color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
     }
     /**
-     * 圆环底轨：用 `border-l3` 而不是 `bg-layer-3`。
+     * 圆环底轨：用 `label-tertiary` 而不是 `bg-layer-3`。
      * 浅色主题下 `bg-layer-1/2/3` 全部解析为同一个 `#fff`，底轨与胶囊背景同色，
-     * 圆环只剩进度弧、看不出「圈」。
-     * 改用 `label-tertiary`：浅色 `#81858c`、深色 `#adb2b8`，两主题都有足够对比
-     * （约 3.5:1 / 6:1），既能读出刻度又不会压过进度弧。
+     * 圆环只剩进度弧、看不出「圈」。`label-tertiary` 浅色 `#81858c`(3.71:1)、
+     * 深色 `#adb2b8`(7.90:1)，两主题都能读出刻度又不压过进度弧。
      */
     const ringTrackStyle = { fill: 'none', stroke: 'var(--dsw-alias-label-tertiary)', strokeWidth: RING_STROKE }
     const ringValueStyle = {
@@ -197,8 +196,14 @@ window.__ModuleLoader__.load({
     }
     /** 气泡贴在按钮下方居中；`pointer-events: none` 保证它不参与命中。 */
     const tipPlacementStyle = { top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 6 }
+    /**
+     * 横条进度轨（长条态与完整面板共用）：底轨同样用 `label-tertiary`。
+     * 与圆环底轨同一个原因——浅色主题下所有 `bg-layer-N` 都解析为 `#fff`，
+     * 底轨与胶囊背景同色，未填充部分等于隐形；`label-tertiary` 在浅色
+     * `#81858c`(3.71:1)、深色 `#adb2b8`(7.90:1)，两种主题都能读出「剩余」部分。
+     */
     const trackStyle = {
-      height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-bg-layer-2)',
+      height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-label-tertiary)',
     }
     const copy = {
       zh: {

@@ -636,9 +636,11 @@ async function queryBalance(signal) {
 
 选 `label-tertiary` 而不是 `border-l3`：`border-l3` 是 12%/16% 透明度的描边色，对 3px 细线的底轨太淡；`label-tertiary` 既能让刻度清晰可读，又不会压过进度弧本身。
 
+**横条底轨一并修正**：同一问题也存在于长条态与完整面板的 4px 横条——它原本用 `bg-layer-2`，浅色主题下同样解析为 `#fff`，未填充部分完全隐形（1.00:1）。现统一改为 `label-tertiary`，与圆环底轨保持一致。结构上底轨是容器、彩色填充是覆盖其上的子元素，所以低进度时读作「进度条」而不是「孤立色块」。
+
 #### 11.11.3 回归守护
 
-`tests/client.spec.ts` 断言底轨 `stroke === 'var(--dsw-alias-label-tertiary)'`，并显式断言它**不是** `bg-layer-3`。把实现回退到 `bg-layer-3` 该用例即失败（已验证）。
+`tests/client.spec.ts` 断言圆环底轨 `stroke === 'var(--dsw-alias-label-tertiary)'`（并显式断言不是 `bg-layer-3`），以及横条底轨 `background === 'var(--dsw-alias-label-tertiary)'`。把任一处回退到 `bg-layer-N`，对应用例即失败（已验证）。
 
 #### 11.11.4 教训
 

@@ -114,7 +114,7 @@ The control has three forms, driven by the pointer and the buttons:
 | **Brief** (hover) | horizontal pill | `Go` + bar + percent | expand, pin, refresh, close |
 | **Full** (expand) | card | three billing windows + updated time + resize handle | collapse, pin, refresh, close |
 
-The ring's **value arc** carries the same meaning as the full panel: green while there is room, amber at ≥80%, and the error colour under `rate-limited`; its **track** uses a neutral grey so the full circle stays visible in both the light and the dark theme. With no data the ring draws only its track and the text reads `Go-…`; a failed query reads `Go-⚠`.
+The ring's **value arc** carries the same meaning as the full panel: green while there is room, amber at ≥80%, and the error colour under `rate-limited`; its **track** uses a neutral grey so the full circle stays visible in both the light and the dark theme, and the bar's track uses the same grey so its unfilled part is visible in the light theme too. With no data the ring draws only its track and the text reads `Go-…`; a failed query reads `Go-⚠`.
 
 | Action | Behavior |
 | --- | --- |
