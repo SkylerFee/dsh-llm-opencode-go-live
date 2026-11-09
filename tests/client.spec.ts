@@ -387,7 +387,10 @@ function createFakeReact() {
         currentSlot = childSlot
         cursor = 0
         try {
-          const rendered = (type as Function)({ ...(props ?? {}), children })
+          // children 必须按真实 React 语义传：0 个为 undefined、1 个为该节点本身、
+          // 多个才是数组。用 rest 数组会掩盖「对单个子节点做展开」这类崩溃。
+          const childArgs = children.length === 0 ? undefined : children.length === 1 ? children[0] : children
+          const rendered = (type as Function)({ ...(props ?? {}), children: childArgs })
           assertHookStability(childSlot, cursor)
           return rendered
         } finally {
