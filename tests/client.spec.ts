@@ -900,6 +900,12 @@ test('收缩态圆环弧长等于已用占比，长条形态显示横条百分�
     const chip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip')!
     const track = find(chip, node => node.props?.style?.height === 4)
     assert.equal(track?.props.style.width, 56)
+    // 回归守护：横条底轨曾用 bg-layer-2，浅色主题下与胶囊背景同为 #fff（对比度 1.00），
+    // 未填充部分完全隐形。必须与圆环底轨一样用与背景有对比的 token。
+    assert.equal(
+      track?.props.style.background, 'var(--dsw-alias-label-tertiary)',
+      '横条底轨必须用与背景有对比的颜色，不能用与胶囊背景同色的 bg-layer-2',
+    )
     assert.ok(find(track, node => node.props?.style?.width === '38%'))
     assert.ok(find(chip, node => node.type === 'span' && node.children[0] === '38%'))
 

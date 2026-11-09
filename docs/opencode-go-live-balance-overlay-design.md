@@ -639,9 +639,11 @@ The track now uses `--dsw-alias-label-tertiary`: `#81858c` in light, `#adb2b8` i
 
 `label-tertiary` was chosen over `border-l3` because `border-l3` is a 12%/16% alpha border colour — too faint for the 3px track of a gauge. `label-tertiary` keeps the scale readable without overpowering the value arc.
 
+**The bar track got the same fix**: the same defect affected the 4px bars in the brief form and the full panel — they used `bg-layer-2`, which also resolves to `#fff` in the light theme, leaving the unfilled part invisible (1.00:1). Both now use `label-tertiary`, matching the ring. Structurally the track is the container and the coloured fill is a child overlaying it, so a low percentage still reads as a progress bar rather than an isolated block.
+
 #### 11.11.3 Regression guard
 
-`tests/client.spec.ts` asserts the track's `stroke === 'var(--dsw-alias-label-tertiary)'` and explicitly that it is **not** `bg-layer-3`. Reverting the implementation to `bg-layer-3` fails that case (verified).
+`tests/client.spec.ts` asserts the ring track's `stroke === 'var(--dsw-alias-label-tertiary)'` (and explicitly that it is **not** `bg-layer-3`), plus the bar track's `background === 'var(--dsw-alias-label-tertiary)'`. Reverting either one to `bg-layer-N` fails the matching case (verified).
 
 #### 11.11.4 Lesson
 
