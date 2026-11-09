@@ -874,6 +874,17 @@ test('收缩态圆环弧长等于已用占比，长条形态显示横条百分�
     }
     walkCircles(ring)
     assert.equal(circles.length, 2, '圆环 = 底轨 + 进度弧')
+    // 回归守护：底轨曾用 `bg-layer-3`，而浅色主题下 bg-layer-1/2/3 全部解析为同一个
+    // `#fff`，底轨与胶囊背景同色，圆环只剩进度弧、看不出「圈」。
+    // 必须使用与背景有对比的 token（label-tertiary：浅色 #81858c / 深色 #adb2b8）。
+    assert.equal(
+      circles[0]!.props.style.stroke, 'var(--dsw-alias-label-tertiary)',
+      '圆环底轨必须用与背景有对比的颜色，不能用与胶囊背景同色的 bg-layer-3',
+    )
+    assert.notEqual(
+      circles[0]!.props.style.stroke, 'var(--dsw-alias-bg-layer-3)',
+      '底轨不得回退到 bg-layer-3（浅色主题下与背景同色）',
+    )
     // 弧长断言：38% 的周长（r = (16-3)/2 = 6.5 → C ≈ 40.84 → 15.52）
     const dash = String(circles[1]!.props['stroke-dasharray'])
     const [usedArc] = dash.split(' ')

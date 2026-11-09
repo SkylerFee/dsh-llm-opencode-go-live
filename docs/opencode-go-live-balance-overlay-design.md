@@ -610,3 +610,39 @@ Root cause: the brief form's **body was itself a `<button>`** wired to `onClick 
 - **Touch devices still get there**: tapping the collapsed form → brief form, then the Expand button → full form. That path never needs hover, so removing the body click does not cost touch users the full panel.
 - **Regression guard**: `tests/client.spec.ts` asserts `chip-main` is a `span` with no `onClick` and no pointer cursor, and that the brief form's button count dropped from 5 to 4. Turning the body back into a button fails that case (verified).
 - Cleanup in passing: `chipMainStyle` lost its now-unused `cursor: pointer`.
+
+### 11.11 Fixing an invisible ring track in the light theme (2026-11-09)
+
+The user reported that "switching the host to the light theme makes the ring barely visible — only the progress arc shows, no circle".
+
+#### 11.11.1 Root cause (read from the host's real tokens)
+
+The track used `--dsw-alias-bg-layer-3`. Reading the host's `@deepseek-ai/dsh-client-ui-theme` definitions:
+
+| token | Light | Dark |
+|---|---|---|
+| `bg-layer-1` (pill background) | `#fff` | `bluish-875` |
+| `bg-layer-2` | `#fff` | `bluish-850` |
+| `bg-layer-3` (former track) | **`#fff`** | `bluish-800` |
+
+**In the light theme layers 1, 2, and 3 all resolve to the same `#fff`**, so the track and the pill background are identical — a contrast ratio of **1.00:1**. Only the progress arc remained visible and the circle vanished. The dark theme distinguishes the three layers, which is why the defect only surfaced in light mode.
+
+#### 11.11.2 Fix
+
+The track now uses `--dsw-alias-label-tertiary`: `#81858c` in light, `#adb2b8` in dark. Measured contrast:
+
+| Candidate | Light | Dark |
+|---|---|---|
+| `bg-layer-3` (former) | 1.00:1 ❌ invisible | — |
+| `border-l3` | 1.32:1 (too faint) | 1.65:1 |
+| **`label-tertiary` (chosen)** | **3.71:1** | **7.90:1** |
+
+`label-tertiary` was chosen over `border-l3` because `border-l3` is a 12%/16% alpha border colour — too faint for the 3px track of a gauge. `label-tertiary` keeps the scale readable without overpowering the value arc.
+
+#### 11.11.3 Regression guard
+
+`tests/client.spec.ts` asserts the track's `stroke === 'var(--dsw-alias-label-tertiary)'` and explicitly that it is **not** `bg-layer-3`. Reverting the implementation to `bg-layer-3` fails that case (verified).
+
+#### 11.11.4 Lesson
+
+This defect is invisible to the offline suite: both themes' token values come from the host at runtime, and the test sandbox has no CSS variables at all. Anywhere a theme token draws a shape, confirm that token actually differs from the background behind it rather than assuming `bg-layer-N` layers are distinct — the host collapses the first three into one value in the light theme.
