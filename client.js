@@ -12,11 +12,24 @@ window.__ModuleLoader__.load({
     const REFRESH_ROUTE = '/api/opencode-go-live/refresh'
     /** 瞬态提示的驻留时长；足够读完「新增/更新/移除」三个数字，又不至于挡住界面。 */
     const TOAST_DURATION_MS = 3200
-    // 悬浮窗的纯界面偏好（位置、固定、固定展开、尺寸）留在浏览器本地；是否展示由插件配置决定。
+    // 悬浮窗的纯界面偏好（位置、固定、尺寸）留在浏览器本地；是否展示由插件配置决定。
     const OVERLAY_POS_KEY = 'opencode-go-live.overlay.pos'
     const OVERLAY_PINNED_KEY = 'opencode-go-live.overlay.pinned'
-    const OVERLAY_EXPANDED_KEY = 'opencode-go-live.overlay.expanded'
     const OVERLAY_SIZE_KEY = 'opencode-go-live.overlay.size'
+    /**
+     * 悬浮窗的三种形态。状态由指针与按钮驱动，不持久化：
+     * - `ring`：默认收缩态，圆环弧长即 5 小时窗口已用占比，无按钮；
+     * - `brief`：悬停态，沿用原 chip 的长条形态并补全全部按钮；
+     * - `full`：点击展开后的完整卡片，三个计费窗口 + 更新时间 + 调整手柄。
+     */
+    const OVERLAY_MODE_RING = 'ring'
+    const OVERLAY_MODE_BRIEF = 'brief'
+    const OVERLAY_MODE_FULL = 'full'
+    /** 圆环几何：viewBox 坐标下的半径与描边宽度，弧长按描边中线计算。 */
+    const RING_SIZE = 16
+    const RING_STROKE = 3
+    const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2
+    const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
     /** 展开面板的尺寸边界：低于最小尺寸内容读不全，高于最大尺寸会盖住整个帧。 */
     const OVERLAY_DEFAULT_WIDTH = 264
     const OVERLAY_MIN_WIDTH = 200
@@ -126,6 +139,28 @@ window.__ModuleLoader__.load({
       display: 'inline-flex', alignItems: 'center', gap: 6, padding: 0, cursor: 'pointer',
       border: 0, background: 'transparent', color: 'inherit', font: 'inherit',
     }
+    /**
+     * 收缩态（ring）外观：自适应宽度的胶囊，左侧圆环 + 右侧 `Go-32%` 文字。
+     * 不固定像素宽度——文字与圆环都能完整显示，数字位数变化时只影响自身宽度。
+     */
+    const ringChipStyle = {
+      padding: '4px 8px 4px 6px',
+      display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, userSelect: 'none', touchAction: 'none',
+      border: '0.5px solid var(--dsw-alias-border-l3)', borderRadius: 999,
+      background: 'var(--dsw-alias-bg-layer-1)', color: 'var(--dsw-alias-label-primary)',
+      boxShadow: '0 4px 14px rgba(0, 0, 0, 0.14)', cursor: 'pointer',
+    }
+    const ringLabelStyle = {
+      display: 'inline-flex', alignItems: 'center',
+      color: 'var(--dsw-alias-label-secondary)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+    }
+    /** 圆环底轨与进度弧：进度弧从 12 点起顺时针填充，弧长与已用占比同义。 */
+    const ringTrackStyle = { fill: 'none', stroke: 'var(--dsw-alias-bg-layer-3)', strokeWidth: RING_STROKE }
+    const ringValueStyle = {
+      fill: 'none', strokeWidth: RING_STROKE, strokeLinecap: 'round',
+      transform: 'rotate(-90deg)', transformOrigin: 'center',
+      transition: 'stroke-dasharray 240ms ease-out',
+    }
     const trackStyle = {
       height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-bg-layer-2)',
     }
@@ -143,7 +178,8 @@ window.__ModuleLoader__.load({
         refreshing: '刷新中…',
         restoreOverlay: '展开用量面板',
         pinOverlay: '固定位置', unpinOverlay: '解除固定',
-        pinExpandOverlay: '固定展开', unpinExpandOverlay: '取消固定展开', resizeOverlay: '调整面板大小',
+        resizeOverlay: '调整面板大小',
+        expandOverlay: '展开用量详情', collapseOverlay: '收起用量详情',
         chipTitle: 'Go', chipPending: '…', chipFailed: '⚠',
         windowRolling: '5 小时', windowWeekly: '本周', windowMonthly: '本月',
         loading: '加载中…', updatedAtPrefix: '更新于',
@@ -165,7 +201,8 @@ window.__ModuleLoader__.load({
         refreshing: 'Refreshing…',
         restoreOverlay: 'Expand usage panel',
         pinOverlay: 'Pin position', unpinOverlay: 'Unpin position',
-        pinExpandOverlay: 'Keep expanded', unpinExpandOverlay: 'Stop keeping expanded', resizeOverlay: 'Resize panel',
+        resizeOverlay: 'Resize panel',
+        expandOverlay: 'Show usage details', collapseOverlay: 'Hide usage details',
         chipTitle: 'Go', chipPending: '…', chipFailed: '⚠',
         windowRolling: '5-hour', windowWeekly: 'This week', windowMonthly: 'This month',
         loading: 'Loading…', updatedAtPrefix: 'Updated',
@@ -281,21 +318,55 @@ window.__ModuleLoader__.load({
       }))
     }
 
-    /** 固定展开图标：已固定展开为实心方框内箭头，未固定为空心方框内箭头。 */
-    function expandIcon(filled) {
+    /**
+     * 展开／收起图标：方框加斜向箭头。
+     * `toward` 为 `full` 时箭头指向外（展开），为 `brief` 时指向内（收起）；
+     * 方向靠路径镜像表达，颜色随 currentColor 跟随主题。
+     */
+    function expandIcon(toward) {
+      const inward = toward === OVERLAY_MODE_BRIEF
       return h('svg', {
         width: 12, height: 12, viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false',
         style: { display: 'block' },
       },
       h('rect', {
         x: 3.5, y: 3.5, width: 17, height: 17, rx: 4,
-        fill: filled ? 'currentColor' : 'none', stroke: 'currentColor', strokeWidth: 1.6,
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.6,
       }),
+      // 展开：箭头从中心指向右上角；收起：箭头从右上角指向中心。
       h('path', {
-        d: 'M9 15L15 9M10.5 9H15V13.5', fill: 'none',
-        stroke: filled ? 'var(--dsw-alias-bg-layer-1)' : 'currentColor',
+        d: inward ? 'M15 9L9 15M13.5 15H9V10.5' : 'M9 15L15 9M10.5 9H15V13.5',
+        fill: 'none', stroke: 'currentColor',
         strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round',
       }))
+    }
+
+    /**
+     * 收缩态圆环：底轨整圆 + 进度弧，弧长即已用占比。
+     * 按描边中线计算周长，`stroke-dasharray` 用「已用弧长, 剩余弧长」两段表示；
+     * 圆心旋转 -90° 让弧从 12 点起顺时针增长。
+     * `percent` 为 null（尚无数据或查询失败）时只画底轨，不画进度弧。
+     */
+    function ringIcon(percent, color) {
+      const used = percent === null ? 0 : Math.min(100, Math.max(0, percent))
+      return h('svg', {
+        width: RING_SIZE, height: RING_SIZE, viewBox: `0 0 ${RING_SIZE} ${RING_SIZE}`,
+        'aria-hidden': 'true', focusable: 'false',
+        'data-opencode-go-live-overlay': 'ring',
+        style: { display: 'block', flex: 'none' },
+      },
+      h('circle', {
+        cx: RING_SIZE / 2, cy: RING_SIZE / 2, r: RING_RADIUS, style: ringTrackStyle,
+      }),
+      percent === null
+        ? null
+        : h('circle', {
+          cx: RING_SIZE / 2, cy: RING_SIZE / 2, r: RING_RADIUS,
+          style: { ...ringValueStyle, stroke: color },
+          // 0 弧长时完全隐藏，避免圆头描边在 0% 处画出一个点。
+          'stroke-dasharray': `${(used / 100) * RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`,
+          opacity: used === 0 ? 0 : 1,
+        }))
     }
 
     /** 调整大小手柄的矢量标记：右下角两条斜线。 */
@@ -672,14 +743,13 @@ window.__ModuleLoader__.load({
           // null 表示配置尚未读到：此时既不渲染也不查询，避免开关关闭时闪现面板。
           const [enabled, setEnabled] = React.useState(null)
           const [envelope, setEnvelope] = React.useState(null)
-          // 徽章是默认形态；鼠标悬浮时展开完整面板，移开自动收起。
-          const [hovered, setHovered] = React.useState(false)
-          // 拖拽与调整大小期间即使指针越过锚点边界也不收起，否则拖到视口边缘会突然变成徽章。
+          // 三态形态：ring（默认收缩）→ brief（悬停）→ full（点击展开）。
+          // 只有 brief 响应鼠标移出；full 必须由「收起」按钮显式降级，便于阅读三个窗口。
+          const [mode, setMode] = React.useState(OVERLAY_MODE_RING)
+          // 拖拽与调整大小期间即使指针越过锚点边界也不降级，否则拖到视口边缘会突然变回收缩态。
           const [dragging, setDragging] = React.useState(false)
           const [resizing, setResizing] = React.useState(false)
           const [pinned, setPinned] = React.useState(() => readFlag(OVERLAY_PINNED_KEY))
-          // 固定展开：不移开鼠标也保持完整面板；关闭后回到「悬浮展开、移开收起」。
-          const [expandPinned, setExpandPinned] = React.useState(() => readFlag(OVERLAY_EXPANDED_KEY))
           // null 表示未调整过：宽度取默认值、高度随内容自适应。
           const [size, setSize] = React.useState(() => readOverlaySize())
           const [pos, setPos] = React.useState(null)
@@ -688,8 +758,6 @@ window.__ModuleLoader__.load({
           const [refreshing, setRefreshing] = React.useState(false)
           const [saving, setSaving] = React.useState(false)
           const [writeError, setWriteError] = React.useState('')
-          // 展开形态：鼠标悬浮时临时展开，固定展开则不看指针位置持续保持完整面板。
-          const expanded = hovered || expandPinned
 
           React.useEffect(() => {
             let active = true
@@ -700,9 +768,9 @@ window.__ModuleLoader__.load({
               const next = await readOverlayEnabled(ctx)
               if (!active || current !== generation) return
               setEnabled(next)
-              // 隐藏期间不残留悬浮态：锚点已卸载，mouseleave 不会再补上，
-              // 否则重新打开开关时面板会停在展开形态而「固定展开」图标显示未固定。
-              if (next !== true) setHovered(false)
+              // 隐藏期间不残留形态：锚点已卸载，mouseleave 不会再补上，
+              // 否则重新打开开关时悬浮窗会停在 brief/full 而不是默认的收缩态。
+              if (next !== true) setMode(OVERLAY_MODE_RING)
             }
             void refreshEnabled()
             const disposers = [
@@ -738,11 +806,11 @@ window.__ModuleLoader__.load({
           }, [enabled, nonce])
 
           /**
-           * 展开形态、位置、尺寸与数据（行数变化会改变面板高度）都会改变锚点几何
+           * 形态、位置、尺寸与数据（行数变化会改变面板高度）都会改变锚点几何
            * （也就是被减除的 no-drag 区域）。Electron 只在 app-region 计算值变化时
            * 重算拖拽区，所以每次几何变化都补一次脉冲。
            */
-          React.useEffect(() => { pulseWindowDragRecall() }, [expanded, pos, size, envelope])
+          React.useEffect(() => { pulseWindowDragRecall() }, [mode, pos, size, envelope])
 
           /**
            * 手动刷新：请求进行中按钮已禁用，这里不需要额外的节流窗口。
@@ -789,13 +857,13 @@ window.__ModuleLoader__.load({
           }
 
           /**
-           * 固定展开：打开后指针移开也保持完整面板，关闭后回到悬浮展开、移开收起。
-           * 不触碰 `hovered`：指针仍在悬浮窗上时关闭固定展开会保持展开，直到指针移出。
+           * 切换 brief 与 full。
+           * brief → full：点击「展开」显示全部余量窗口；
+           * full → brief：点击「收起」回到长条形态，指针若仍在悬浮窗上就停在这里，
+           * 直到移出才按正常逻辑回到收缩态。full 形态对鼠标移出不做响应。
            */
-          function toggleExpandPinned() {
-            const next = !expandPinned
-            setExpandPinned(next)
-            writeFlag(OVERLAY_EXPANDED_KEY, next)
+          function toggleFullFromBrief() {
+            setMode(previous => previous === OVERLAY_MODE_FULL ? OVERLAY_MODE_BRIEF : OVERLAY_MODE_FULL)
           }
 
           /** 标题栏按钮上的 pointerdown 不得冒泡成拖拽。 */
@@ -944,8 +1012,13 @@ window.__ModuleLoader__.load({
           }
           const anchorProps = {
             style: anchorStyle, tabIndex: -1,
-            onMouseEnter: () => setHovered(true),
-            onMouseLeave: () => { if (!dragging && !resizing) setHovered(false) },
+            // 指针进入收缩态即升为 brief；进入 brief 后只在移出时降级。
+            onMouseEnter: () => setMode(previous => previous === OVERLAY_MODE_RING ? OVERLAY_MODE_BRIEF : previous),
+            onMouseLeave: () => {
+              if (dragging || resizing) return
+              // full 只由「收起」按钮降级：指针移出时不回收，便于读完三个窗口。
+              setMode(previous => previous === OVERLAY_MODE_FULL ? previous : OVERLAY_MODE_RING)
+            },
             onPointerDown: startDrag,
           }
           // 展开尺寸：未调整过宽度取默认值、高度随内容自适应；调整过则两者都用存储值。
@@ -967,16 +1040,15 @@ window.__ModuleLoader__.load({
             title: t(pinned ? 'unpinOverlay' : 'pinOverlay'), 'aria-label': t(pinned ? 'unpinOverlay' : 'pinOverlay'),
             onClick: togglePinned,
           }, pinIcon(pinned))
+          // 展开／收起按钮：brief 中显示「展开」，full 中显示「收起」。
+          const isFull = mode === OVERLAY_MODE_FULL
+          const expandLabel = t(isFull ? 'collapseOverlay' : 'expandOverlay')
           const expandButton = h('button', {
-            type: 'button', 'aria-pressed': expandPinned, onPointerDown: stopDrag,
-            style: {
-              ...overlayIconButtonStyle,
-              color: expandPinned ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-secondary)',
-            },
-            title: t(expandPinned ? 'unpinExpandOverlay' : 'pinExpandOverlay'),
-            'aria-label': t(expandPinned ? 'unpinExpandOverlay' : 'pinExpandOverlay'),
-            onClick: toggleExpandPinned,
-          }, expandIcon(expandPinned))
+            type: 'button', 'aria-pressed': isFull, 'data-opencode-go-live-overlay': 'expand',
+            onPointerDown: stopDrag, style: overlayIconButtonStyle,
+            title: expandLabel, 'aria-label': expandLabel,
+            onClick: toggleFullFromBrief,
+          }, expandIcon(isFull ? OVERLAY_MODE_BRIEF : OVERLAY_MODE_FULL))
           // 刷新按钮的两种状态：空闲可点、请求进行中（图标转为加载动画并禁用）。
           const refreshLabel = t(refreshing ? 'refreshing' : 'refresh')
           const refreshIcon = refreshing
@@ -995,14 +1067,45 @@ window.__ModuleLoader__.load({
             onClick: requestRefresh,
           }, refreshIcon)
 
-          if (!expanded) {
-            // 徽章：5 小时窗口的进度条与用量百分比 + 固定展开与固定位置按钮；整块可拖，鼠标进入即展开。
+          const closeButton = h('button', {
+            type: 'button', onPointerDown: stopDrag, disabled: saving,
+            'data-opencode-go-live-overlay': 'close',
+            style: overlayIconButtonStyle, title: t('closeOverlay'), 'aria-label': t('closeOverlay'),
+            onClick: closeOverlay,
+          }, '×')
+
+          if (mode === OVERLAY_MODE_RING) {
+            // 收缩态：圆环弧长即 5 小时窗口已用占比，右侧同色文字给出精确数字。
+            // 无按钮——指针进入即升级为 brief，所有操作入口在那里。
+            const ringText = rollingPercent === null
+              ? `${t('chipTitle')}-${t(envelope !== null && envelope.ok === false ? 'chipFailed' : 'chipPending')}`
+              : `${t('chipTitle')}-${rollingPercent}%`
+            return h('div', anchorProps,
+            h('div', {
+              'data-opencode-go-live-overlay': 'ring-chip',
+              style: ringChipStyle,
+              // 触摸设备没有 hover：点击收缩态进入 brief，作为唯一的进入入口。
+              onClick: () => { if (!draggedRecently()) setMode(OVERLAY_MODE_BRIEF) },
+              title: t('restoreOverlay'), 'aria-label': t('restoreOverlay'), role: 'button', tabIndex: 0,
+              onKeyDown: event => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                if (typeof event.preventDefault === 'function') event.preventDefault()
+                setMode(OVERLAY_MODE_BRIEF)
+              },
+            },
+            ringIcon(rollingPercent, rollingPercent === null ? null : barColor(rolling)),
+            h('span', { style: ringLabelStyle }, ringText)))
+          }
+
+          if (mode === OVERLAY_MODE_BRIEF) {
+            // 悬停态：沿用原 chip 的长条形态（横条 + 百分比），补全全部操作按钮。
             return h('div', anchorProps,
             h('div', { 'data-opencode-go-live-overlay': 'chip', style: chipStyle },
               h('button', {
-                type: 'button', style: chipMainStyle, title: t('restoreOverlay'), 'aria-label': t('restoreOverlay'),
-                // 鼠标设备上悬浮已经展开；这里保留点击入口，供不支持悬浮的设备使用。
-                onClick: () => { if (!draggedRecently()) setHovered(true) },
+                type: 'button', style: chipMainStyle,
+                title: t('expandOverlay'), 'aria-label': t('expandOverlay'),
+                // 点击主体进入完整卡片；触摸设备由此看到三个窗口。
+                onClick: () => { if (!draggedRecently()) setMode(OVERLAY_MODE_FULL) },
               },
               h('span', { style: { fontWeight: 500 } }, t('chipTitle')),
               h('div', { style: { ...trackStyle, width: 56 } },
@@ -1014,7 +1117,9 @@ window.__ModuleLoader__.load({
                   ? t(envelope !== null && envelope.ok === false ? 'chipFailed' : 'chipPending')
                   : `${rollingPercent}%`)),
               expandButton,
-              pinButton))
+              pinButton,
+              refreshButton,
+              closeButton))
           }
 
           const failed = envelope !== null && envelope.ok === false
@@ -1049,11 +1154,7 @@ window.__ModuleLoader__.load({
             expandButton,
             pinButton,
             refreshButton,
-            h('button', {
-              type: 'button', onPointerDown: stopDrag, disabled: saving,
-              style: overlayIconButtonStyle, title: t('closeOverlay'), 'aria-label': t('closeOverlay'),
-              onClick: closeOverlay,
-            }, '×')),
+            closeButton),
           h('div', { style: overlayBodyStyle },
             failed
               ? h('div', { role: 'alert', style: { color: 'var(--dsw-alias-state-error-primary)' } },

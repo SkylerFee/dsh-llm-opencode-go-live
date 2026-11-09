@@ -135,6 +135,20 @@ interface Element {
   children: unknown[]
 }
 
+/** 收集子树里的全部 button 元素，用于断言各形态的按钮集合。 */
+function collectButtons(node: unknown): Element[] {
+  const found: Element[] = []
+  const walk = (current: unknown): void => {
+    if (Array.isArray(current)) { current.forEach(walk); return }
+    if (typeof current !== 'object' || current === null) return
+    const element = current as Element
+    if (element.type === 'button') found.push(element)
+    element.children?.forEach(walk)
+  }
+  walk(node)
+  return found
+}
+
 /**
  * 定位卡片的密钥输入框。
  * 卡片同时渲染展示开关的复选框，因此必须按 `type` 精确匹配而不是取第一个 input。
@@ -462,15 +476,20 @@ async function mountOverlay(options: {
       await settle()
       harness.render(component!, props)
     },
-    /** 常驻锚点：承载悬浮判定与徽章整块拖拽。 */
+    /** 常驻锚点：承载悬浮判定与收缩态整块拖拽。 */
     anchor: (tree?: unknown): Element => find(
       tree ?? harness.render(component!, { t: (key: string) => dictionary[key]! }),
       node => node.props?.style?.position === 'absolute' && typeof node.props?.onMouseEnter === 'function',
     )!,
-    /** 鼠标进入锚点：徽章是默认形态，展开由悬浮驱动。 */
+    /** 鼠标进入锚点：收缩态升为 brief。 */
     hover: () => { const node = find(harness.render(component!, { t: (key: string) => dictionary[key]! }), n => n.props?.style?.position === 'absolute' && typeof n.props?.onMouseEnter === 'function')!; node.props.onMouseEnter() },
-    /** 鼠标离开锚点：自动回到徽章。 */
+    /** 鼠标离开锚点：brief 回到收缩态，full 保持不动。 */
     unhover: () => { const node = find(harness.render(component!, { t: (key: string) => dictionary[key]! }), n => n.props?.style?.position === 'absolute' && typeof n.props?.onMouseLeave === 'function')!; node.props.onMouseLeave() },
+    /** 点击「展开／收起」按钮切换 brief 与 full。 */
+    toggleFull: () => {
+      const tree = harness.render(component!, { t: (key: string) => dictionary[key]! })
+      find(tree, n => n.props?.['data-opencode-go-live-overlay'] === 'expand')!.props.onClick()
+    },
     dispatchWindow: browser.dispatchWindow,
     windowListenerCount: browser.windowListenerCount,
     setOverlayEnabled: (value: boolean) => { overlayEnabled = value },
@@ -481,7 +500,7 @@ async function mountOverlay(options: {
   }
 }
 
-test('徽章是默认形态，悬浮展开三个计费窗口，移开自动收起', async () => {
+test('收缩态渲染圆环，悬停升为长条，点击展开显示三个计费窗口，移开回到圆环', async () => {
   // 契约测试：客户端消费的正是宿主路由真实产出的 envelope，而不是手写的近似结构。
   const overlay = await mountOverlay({
     overlayEnabled: true,
@@ -497,11 +516,35 @@ test('徽章是默认形态，悬浮展开三个计费窗口，移开自动收�
     // 配置未读到时既不渲染也不查询。
     assert.equal(overlay.render(), null)
     await overlay.ready()
-    const chip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip')
-    assert.ok(chip, '配置读到后默认渲染徽章')
 
-    // 悬浮展开完整面板：三个窗口行各有一条进度条底轨
+    // ① 收缩态：圆环 + Go-38%，无按钮。
+    const ring = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip')
+    assert.ok(ring, '配置读到后默认渲染收缩态圆环胶囊')
+    assert.ok(find(ring, node => node.props['data-opencode-go-live-overlay'] === 'ring'), '收缩态必须含圆环')
+    assert.ok(find(ring, node => node.type === 'span' && node.children[0] === 'Go-38%'), '收缩态文字为 Go-已用%')
+    assert.equal(collectButtons(ring).length, 0, '收缩态不显示任何按钮')
+
+    // ② 悬停态：保留长条形态并补全全部按钮。
     overlay.hover()
+    const brief = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip')!
+    assert.ok(brief, '悬停后升为长条形态')
+    assert.ok(find(brief, node => node.props?.style?.height === 4), '长条形态保留横条进度')
+    // 长条主体本身也是按钮（点击进入完整态），因此按元素数断言四个操作按钮 + 一个主体按钮。
+    const briefButtons = collectButtons(brief)
+    assert.equal(briefButtons.length, 5, '长条形态 = 主体按钮 + 四个操作按钮')
+    assert.deepEqual(
+      [...new Set(briefButtons.map(button => button.props['aria-label']))].sort(),
+      [
+        overlay.dictionary.expandOverlay,
+        overlay.dictionary.pinOverlay,
+        overlay.dictionary.refresh,
+        overlay.dictionary.closeOverlay,
+      ].sort(),
+      '悬停态必须显示全部四个操作按钮',
+    )
+
+    // ③ 完整态：点击展开显示三个窗口行。
+    overlay.toggleFull()
     const panel = overlay.render()
     assert.ok(find(panel, node => node.props['data-opencode-go-live-overlay'] === 'panel'))
     assert.equal(find(panel, node => node.type === 'span' && node.children[0] === overlay.dictionary.overlayTitle) !== undefined, true)
@@ -516,11 +559,20 @@ test('徽章是默认形态，悬浮展开三个计费窗口，移开自动收�
       element.children?.forEach(walk)
     }
     walk(panel)
-    assert.equal(tracks.length, 3)
+    assert.equal(tracks.length, 3, '完整态显示三个计费窗口的进度条')
 
-    // 移开鼠标自动收起为徽章
+    // 完整态对鼠标移出不响应：读完三个窗口前不会自己缩回去。
     overlay.unhover()
-    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'),
+      '完整态移出鼠标不得自动降级',
+    )
+
+    // 点「收起」回到长条；此时指针已不在悬浮窗上，再移出即回收缩态。
+    overlay.toggleFull()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'), '收起后回到长条形态')
+    overlay.unhover()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'), '移出后回到收缩态圆环')
   } finally {
     overlay.restore()
   }
@@ -536,6 +588,7 @@ test('悬浮窗按错误码显示本地化文案且开关关闭时不渲染', as
   try {
     await failing.ready()
     failing.hover()
+    failing.toggleFull()
     const tree = failing.render()
     assert.ok(find(tree, node => node.children?.[0] === failing.dictionary.errorNoSubscription))
   } finally {
@@ -564,8 +617,8 @@ test('未配置展示字段时悬浮窗默认开启', async () => {
   try {
     await overlay.ready()
     assert.ok(
-      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
-      '配置里没有该字段时必须默认渲染徽章',
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'),
+      '配置里没有该字段时必须默认渲染收缩态圆环',
     )
   } finally {
     overlay.restore()
@@ -583,6 +636,7 @@ test('关闭按钮写入配置同步关闭模型页开关，重新打开开关�
   })
   try {
     await overlay.ready()
+    // 悬停升为长条形态，关闭按钮在那里可见
     overlay.hover()
     const tree = overlay.render()
     await find(tree, node => node.type === 'button' && node.props['aria-label'] === overlay.dictionary.closeOverlay)!.props.onClick()
@@ -602,24 +656,24 @@ test('关闭按钮写入配置同步关闭模型页开关，重新打开开关�
     overlay.setOverlayEnabled(true)
     overlay.emitSettingsChange()
     await settle()
-    // 隐藏期间不残留悬浮态：指针从未移出过，重新打开也必须先显示徽章
+    // 隐藏期间不残留形态：指针从未移出过，重新打开也必须先显示收缩态
     assert.ok(
-      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
-      '重新打开开关时必须回到徽章形态，而不是停在展开面板',
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'),
+      '重新打开开关时必须回到收缩态，而不是停在长条或完整面板',
     )
     overlay.hover()
-    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'))
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
     overlay.unhover()
     assert.ok(
-      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
-      '重新打开开关且鼠标不在悬浮窗上时应显示徽章',
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'),
+      '重新打开开关且鼠标不在悬浮窗上时应显示收缩态圆环',
     )
   } finally {
     overlay.restore()
   }
 })
 
-test('徽章显示五小时进度条与用量百分比，固定按钮默认不固定且图标随状态切换', async () => {
+test('收缩态圆环弧长等于已用占比，长条形态显示横条百分比，固定按钮状态双向切换', async () => {
   const overlay = await mountOverlay({
     overlayEnabled: true,
     response: async () => new Response(JSON.stringify({
@@ -631,26 +685,39 @@ test('徽章显示五小时进度条与用量百分比，固定按钮默认不�
   })
   try {
     await overlay.ready()
+
+    // 收缩态：圆环由底轨 + 进度弧两段描边组成，弧长按已用占比计算
+    const ringChip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip')!
+    const ring = find(ringChip, node => node.props['data-opencode-go-live-overlay'] === 'ring')!
+    const arcs = collectButtons(ring)
+    assert.equal(arcs.length, 0, '圆环内不得有按钮')
+    const circles: Element[] = []
+    const walkCircles = (node: unknown): void => {
+      if (Array.isArray(node)) { node.forEach(walkCircles); return }
+      if (typeof node !== 'object' || node === null) return
+      const element = node as Element
+      if (element.type === 'circle') circles.push(element)
+      element.children?.forEach(walkCircles)
+    }
+    walkCircles(ring)
+    assert.equal(circles.length, 2, '圆环 = 底轨 + 进度弧')
+    // 弧长断言：38% 的周长（r = (16-3)/2 = 6.5 → C ≈ 40.84 → 15.52）
+    const dash = String(circles[1]!.props['stroke-dasharray'])
+    const [usedArc] = dash.split(' ')
+    const circumference = 2 * Math.PI * 6.5
+    assert.ok(
+      Math.abs(Number(usedArc) / circumference - 0.38) < 0.001,
+      `进度弧长必须等于已用占比，实际 ${usedArc}/${circumference}`,
+    )
+    assert.ok(find(ringChip, node => node.type === 'span' && node.children[0] === 'Go-38%'), '收缩态文字为 Go-已用%')
+
+    // 长条形态：保留横条进度与百分比
+    overlay.hover()
     const chip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip')!
-    // 进度条：5 小时窗口的已用占比
     const track = find(chip, node => node.props?.style?.height === 4)
     assert.equal(track?.props.style.width, 56)
     assert.ok(find(track, node => node.props?.style?.width === '38%'))
     assert.ok(find(chip, node => node.type === 'span' && node.children[0] === '38%'))
-    // 徽章保留主体、固定展开与固定位置三个按钮：最小化按钮已被悬浮展开取代
-    const chipButtons: Element[] = []
-    const collectButtons = (node: unknown): void => {
-      if (Array.isArray(node)) { node.forEach(collectButtons); return }
-      if (typeof node !== 'object' || node === null) return
-      const element = node as Element
-      if (element.type === 'button') chipButtons.push(element)
-      element.children?.forEach(collectButtons)
-    }
-    collectButtons(chip)
-    assert.deepEqual(
-      chipButtons.map(button => button.props['aria-label']).sort(),
-      [overlay.dictionary.pinOverlay, overlay.dictionary.pinExpandOverlay, overlay.dictionary.restoreOverlay].sort(),
-    )
 
     // 默认不固定：空心图标
     const pin = find(chip, node => node.type === 'button' && node.props['aria-label'] === overlay.dictionary.pinOverlay)!
@@ -669,7 +736,7 @@ test('徽章显示五小时进度条与用量百分比，固定按钮默认不�
   }
 })
 
-test('徽章与面板拖拽受固定状态门控，拖动后的点击不触发展开', async () => {
+test('收缩态与完整面板拖拽受固定状态门控，拖动后的点击不触发形态变化', async () => {
   const overlay = await mountOverlay({
     overlayEnabled: true,
     response: async () => new Response(JSON.stringify({
@@ -685,7 +752,7 @@ test('徽章与面板拖拽受固定状态门控，拖动后的点击不触发�
     const anchorStub = { offsetParent: frame, getBoundingClientRect: () => ({ left: 100, top: 100, width: 180, height: 28 }) }
     const dragStart = { clientX: 200, clientY: 200, currentTarget: anchorStub, preventDefault() {} }
 
-    // 未固定：徽章整块可拖
+    // 未固定：收缩态整块可拖
     overlay.anchor(overlay.render()).props.onPointerDown(dragStart)
     assert.equal(overlay.windowListenerCount('pointermove'), 1)
     overlay.dispatchWindow('pointermove', { clientX: 260, clientY: 240 })
@@ -693,32 +760,38 @@ test('徽章与面板拖拽受固定状态门控，拖动后的点击不触发�
     assert.equal(overlay.windowListenerCount('pointermove'), 0, '拖拽结束必须移除监听')
     assert.equal(overlay.render()?.props.style.left, 160, '拖拽必须更新锚点位置')
 
-    // 拖拽余波内的点击属于移动手势，不得展开面板
-    find(overlay.render(), node => node.type === 'button' && node.props['aria-label'] === overlay.dictionary.restoreOverlay)!.props.onClick()
-    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
+    // 拖拽余波内的点击属于移动手势，不得进入长条形态
+    find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip')!.props.onClick()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'))
 
-    // 固定后：徽章拖拽不再生效
+    // 固定后：收缩态拖拽不再生效
+    overlay.hover()
     find(overlay.render(), node => node.type === 'button' && node.props['aria-label'] === overlay.dictionary.pinOverlay)!.props.onClick()
     overlay.anchor(overlay.render()).props.onPointerDown(dragStart)
-    assert.equal(overlay.windowListenerCount('pointermove'), 0, '固定后徽章不得注册拖拽监听')
+    assert.equal(overlay.windowListenerCount('pointermove'), 0, '固定后收缩态不得注册拖拽监听')
 
-    // 解除固定后：悬浮展开的面板同样可拖（事件冒泡到锚点）
-    overlay.hover()
-    overlay.render()
+    // 解除固定后：完整面板同样可拖（事件冒泡到锚点）
     find(overlay.render(), node => node.type === 'button' && node.props['aria-label'] === overlay.dictionary.unpinOverlay)!.props.onClick()
+    overlay.toggleFull()
     overlay.anchor(overlay.render()).props.onPointerDown(dragStart)
     assert.equal(overlay.windowListenerCount('pointermove'), 1, '解除固定后标题栏拖拽必须恢复')
 
-    // 拖拽期间指针越过锚点边界（拖到视口边缘）不得收起
+    // 拖拽期间指针越过锚点边界（拖到视口边缘）不得降级
     overlay.unhover()
     assert.ok(
       find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'),
-      '拖拽期间不得收起面板',
+      '拖拽期间不得降级形态',
     )
-    // 拖拽结束后恢复悬浮收起语义
+    // 拖拽结束后：完整态移交出不降级，点「收起」后再移出才回到收缩态
     overlay.dispatchWindow('pointerup', {})
     overlay.unhover()
-    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'),
+      '完整态对移出不响应',
+    )
+    overlay.toggleFull()
+    overlay.unhover()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'))
   } finally {
     overlay.restore()
   }
@@ -767,38 +840,141 @@ test('悬浮窗锚点从窗口拖拽几何中减除，并在几何变化后请�
   }
 })
 
-test('固定展开按钮让完整面板保持展开，关闭后回到悬浮收起', async () => {
+test('收缩态无按钮，点击或键盘进入长条形态作为无 hover 设备的入口', async () => {
   const overlay = await mountOverlay({ response: rollingOnly })
   try {
     await overlay.ready()
-    // 默认未固定展开：空心图标，且不写 localStorage
-    const expand = find(overlay.render(), node =>
-      node.type === 'button' && node.props['aria-label'] === overlay.dictionary.pinExpandOverlay)!
-    assert.equal(expand.props['aria-pressed'], false)
-    assert.equal(find(expand, node => node.type === 'rect')?.props.fill, 'none')
-    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded') ?? null, null)
+    const ringChip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip')!
+    assert.equal(collectButtons(ringChip).length, 0, '收缩态不得出现任何按钮')
+    assert.equal(ringChip.props.role, 'button', '收缩态本身是可点击的整体')
+    assert.equal(ringChip.props.tabIndex, 0, '收缩态必须可聚焦，键盘用户才能进入')
 
-    // 点击后立即展开；指针移开仍保持完整面板
+    // 点击进入长条形态
+    ringChip.props.onClick()
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
+      '点击收缩态必须升为长条形态',
+    )
+    overlay.unhover()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'))
+
+    // 键盘 Enter / 空格同样进入长条形态
+    for (const key of ['Enter', ' ']) {
+      const chip = find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip')!
+      let prevented = false
+      chip.props.onKeyDown({ key, preventDefault: () => { prevented = true } })
+      assert.equal(prevented, true, `${key} 必须阻止默认行为`)
+      assert.ok(
+        find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'),
+        `${key} 必须升为长条形态`,
+      )
+      overlay.unhover()
+    }
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('圆环在无数据时只画底轨，查询失败时文字显示失败标记', async () => {
+  // 尚无数据：配置已读到但首次查询还没落地
+  const pending = await mountOverlay({ response: () => new Promise<Response>(() => {}) })
+  try {
+    await pending.ready()
+    const ring = find(pending.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring')!
+    const circles: Element[] = []
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) { node.forEach(walk); return }
+      if (typeof node !== 'object' || node === null) return
+      const element = node as Element
+      if (element.type === 'circle') circles.push(element)
+      element.children?.forEach(walk)
+    }
+    walk(ring)
+    assert.equal(circles.length, 1, '无数据时只有底轨，不画进度弧')
+    assert.ok(
+      find(pending.render(), node => node.type === 'span' && node.children[0] === 'Go-…'),
+      '无数据时文字为占位符',
+    )
+  } finally {
+    pending.restore()
+  }
+
+  // 查询失败：圆环保留底轨，文字给出失败标记
+  const failed = await mountOverlay({
+    response: async () => new Response(JSON.stringify({ ok: false, code: 'AUTH', message: 'x' }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }),
+  })
+  try {
+    await failed.ready()
+    assert.ok(
+      find(failed.render(), node => node.type === 'span' && node.children[0] === 'Go-⚠'),
+      '查询失败时收缩态文字显示失败标记',
+    )
+  } finally {
+    failed.restore()
+  }
+})
+
+test('展开与收起按钮的箭头方向相反，作为形态的双向提示', async () => {
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    overlay.hover()
+    // 长条形态：箭头指向外（展开）。先取值再切换形态——每次 render 都返回新树。
+    const arrowPath = () => find(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'expand')!,
+      node => node.type === 'path',
+    )!
+    const expandD = arrowPath().props.d
+    assert.equal(expandD, 'M9 15L15 9M10.5 9H15V13.5', '展开箭头指向外')
+
+    // 完整形态：箭头指向内（收起）
+    overlay.toggleFull()
+    const collapseD = arrowPath().props.d
+    assert.equal(collapseD, 'M15 9L9 15M13.5 15H9V10.5', '收起箭头指向内')
+    assert.notEqual(collapseD, expandD, '两种形态的箭头方向必须不同')
+  } finally {
+    overlay.restore()
+  }
+})
+
+test('展开按钮在长条与完整面板之间切换，收起后指针移出才回收缩态', async () => {
+  const overlay = await mountOverlay({ response: rollingOnly })
+  try {
+    await overlay.ready()
+    overlay.hover()
+    // 长条形态：按钮为「展开」，图标箭头指向外，不写任何持久化键
+    let expand = find(overlay.render(), node =>
+      node.props['data-opencode-go-live-overlay'] === 'expand')!
+    assert.equal(expand.props['aria-label'], overlay.dictionary.expandOverlay)
+    assert.equal(expand.props['aria-pressed'], false)
+    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded') ?? null, null, '形态不持久化')
+
+    // 点击展开：进入完整面板，按钮变为「收起」
     expand.props.onClick()
     let tree = overlay.render()
     assert.ok(find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel'))
-    assert.equal(find(tree, node => node.props['data-opencode-go-live-overlay'] === 'chip'), undefined)
-    overlay.unhover()
-    tree = overlay.render()
-    assert.ok(
-      find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel'),
-      '固定展开后移开鼠标不得收起为徽章',
-    )
-    const pinned = find(tree, node =>
-      node.type === 'button' && node.props['aria-label'] === overlay.dictionary.unpinExpandOverlay)!
-    assert.equal(pinned.props['aria-pressed'], true)
-    assert.equal(find(pinned, node => node.type === 'rect')?.props.fill, 'currentColor')
-    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded'), '1')
+    assert.equal(find(tree, node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'), undefined)
+    const collapse = find(tree, node => node.props['data-opencode-go-live-overlay'] === 'expand')!
+    assert.equal(collapse.props['aria-label'], overlay.dictionary.collapseOverlay)
+    assert.equal(collapse.props['aria-pressed'], true)
 
-    // 取消固定展开且指针不在悬浮窗上：回到徽章
-    pinned.props.onClick()
-    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'))
-    assert.equal(overlay.stored.get('opencode-go-live.overlay.expanded'), '0')
+    // 完整态对鼠标移出不响应：便于读完三个窗口
+    overlay.unhover()
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel'),
+      '完整态移出鼠标不得自动降级',
+    )
+
+    // 点「收起」回到长条形态；指针此时已在悬浮窗外，再移出即回收缩态
+    collapse.props.onClick()
+    assert.ok(find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'chip'), '收起后回到长条形态')
+    overlay.unhover()
+    assert.ok(
+      find(overlay.render(), node => node.props['data-opencode-go-live-overlay'] === 'ring-chip'),
+      '收起后移出指针回到收缩态',
+    )
   } finally {
     overlay.restore()
   }
@@ -809,6 +985,7 @@ test('展开面板可调整大小并受最小与最大尺寸限制，尺寸跨�
   try {
     await overlay.ready()
     overlay.hover()
+    overlay.toggleFull()
     let tree = overlay.render()
     let panel = find(tree, node => node.props['data-opencode-go-live-overlay'] === 'panel')!
     assert.equal(panel.props.style.width, 264, '默认宽度')
@@ -868,6 +1045,7 @@ test('展开面板可调整大小并受最小与最大尺寸限制，尺寸跨�
   try {
     await restored.ready()
     restored.hover()
+    restored.toggleFull()
     let panel = find(restored.render(), node => node.props['data-opencode-go-live-overlay'] === 'panel')!
     assert.equal(panel.props.style.width, 480, '越界宽度按最大尺寸收敛')
     assert.equal(panel.props.style.height, 120, '越界高度按最小尺寸收敛')
@@ -910,6 +1088,8 @@ test('刷新按钮只在请求进行中禁用，动画一结束即可再次点�
     await overlay.ready()
     assert.equal(calls, 1, '挂载时查询一次')
     overlay.hover()
+    // 完整面板才注入旋转动画的 keyframes
+    overlay.toggleFull()
     assert.ok(
       find(overlay.render(), node => node.type === 'span' && node.children[0] === '10%'),
       '首次查询结果必须渲染',
@@ -1057,6 +1237,7 @@ test('更新时间使用 24 小时制，无法解析的时间戳隐藏该行', a
   try {
     await overlay.ready()
     overlay.hover()
+    overlay.toggleFull()
     const tree = overlay.render()
     const local = new Date(checkedAt)
     const expected = [local.getHours(), local.getMinutes(), local.getSeconds()]
