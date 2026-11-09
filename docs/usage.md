@@ -102,22 +102,32 @@ The catalog comes from Models.dev and fetching it needs no API key; the key is r
 
 The card's **Show usage overlay** switch controls the bottom-right usage control. It writes the plugin's `showBalanceOverlay` config, whose **default is on**, so a fresh install shows the control and the choice survives a profile restart. When the host cannot report the field (for example before any config write), it counts as on as well.
 
-The chip expanding into the full panel and collapsing back when the mouse leaves:
+The collapsed ring promoting to the brief form on hover and to the full panel on expand:
 
 ![The usage overlay chip expanding into the full panel](img/usage-view.gif)
 
-**The default form is a chip** occupying a small bottom-right area, showing the 5-hour window's bar and usage percent plus two buttons (keep-expanded, pin):
+The control has three forms, driven by the pointer and the buttons:
+
+| Form | Look | Content | Buttons |
+| --- | --- | --- | --- |
+| **Collapsed** (default) | ring pill | the ring's arc length is the 5-hour used share; text reads e.g. `Go-38%` | none |
+| **Brief** (hover) | horizontal pill | `Go` + bar + percent | expand, pin, refresh, close |
+| **Full** (expand) | card | three billing windows + updated time + resize handle | collapse, pin, refresh, close |
+
+The ring and its text share one colour whose meaning matches the full panel: green while there is room, amber at ≥80%, and the error colour under `rate-limited`. With no data the ring draws only its track and the text reads `Go-…`; a failed query reads `Go-⚠`.
 
 | Action | Behavior |
 | --- | --- |
-| Move the mouse onto the chip | Expands the full panel (three billing windows plus the updated time). |
-| Move the mouse away | Collapses back to the chip automatically; no button is involved (unless keep-expanded is on). |
-| Drag the chip or the panel (while unpinned) | Moves it; anywhere on the panel except its buttons and the resize handle works as a drag handle. A click at the end of a drag is not treated as an expand. |
-| Click the chip body | Expands the panel on devices without hover. |
-| Click the keep-expanded button | Holds the panel open so moving the mouse away no longer collapses it. The icon is a vector square frame with an arrow: **filled = kept expanded, hollow = not**, and **the default is off**. Clicking again releases it. |
-| Click the pin button | Locks or unlocks the current position. The icon is a vector pin: **filled = pinned, hollow = unpinned**, and **the default is unpinned**. While pinned, neither the chip nor the panel can be dragged. |
+| Move the mouse onto the collapsed form | Promotes it to the brief form, where all four action buttons appear. |
+| Move the mouse off the brief form | Returns to the collapsed form automatically. |
+| Click the brief body, or click Expand | Enters the full form with the three billing windows. |
+| Move the mouse off the full form | **Nothing happens.** The full form exists to read the windows, so only Collapse leaves it. |
+| Click Collapse | Returns to the brief form; if the pointer is still over the control it stays brief, and only a pointer leave returns it to collapsed. |
+| Click / Enter / Space on the collapsed form | Enters the brief form. Touch devices have no hover, so this is their only entry point. |
+| Drag any form (while unpinned) | Moves it; anywhere on the full form except its buttons and the resize handle works as a drag handle. A click at the end of a drag is not treated as a click. |
+| Click the pin button | Locks or unlocks the current position. The icon is a vector pin: **filled = pinned, hollow = unpinned**, and **the default is unpinned**. While pinned, none of the three forms can be dragged. |
 
-"Keep expanded" and "pin position" are independent: the former decides whether the panel stays expanded, the latter whether the position can be dragged.
+The expand/collapse button is a vector square frame with an arrow: the arrow points **outward** in the brief form (expand) and **inward** in the full form (collapse). It is independent of pinning the position — the former decides the form, the latter whether the position can be dragged.
 
 The full panel shows the OpenCode Go subscription usage across three billing windows:
 
@@ -131,8 +141,8 @@ Each row shows the percent, a bar, and a reset countdown; the bar turns amber ne
 
 | Button | Behavior |
 | --- | --- |
-| Keep expanded | The same state as the chip's button; toggles whether the panel stays expanded. |
-| Pin | Locks or unlocks the position, sharing one state with the chip's button. |
+| Expand / Collapse | Switches between the brief and full forms, sharing one state with the brief form's button. |
+| Pin | Locks or unlocks the position, sharing one state with the brief form's button. |
 | ⟳ Refresh | Queries immediately. The button has only two states: clickable, and **Refreshing…** (the glyph becomes a spinning loader and the button is disabled until the result arrives or the 20-second fallback timeout exits the animation). **It becomes clickable again the moment the animation ends** — there is no cooldown wait; consecutive refreshes are limited only by "one request at a time". With the system's "reduce motion" setting on, the icon stops spinning but still shows the loader and the "Refreshing…" label. |
 | × Close | Writes the plugin's `showBalanceOverlay` to `false`, which **turns the Models-card switch off in step**; reopen that switch to show the control again. |
 
@@ -148,7 +158,7 @@ The expanded panel has a resize handle in its bottom-right corner (two diagonal 
 
 The default width is 264px with content-driven height; once resized, both dimensions are fixed and any overflow scrolls inside the content area (the title row and handle stay visible). The size is stored in the browser's `localStorage`, and a hand-edited value or a smaller window converges to the legal range on mount.
 
-The panel has no minimize button: moving the mouse away collapses it into the chip (unless keep-expanded is on). Position, pinning, keep-expanded, and size are browser-local interface preferences (`localStorage` keys `opencode-go-live.overlay.pos`/`.pinned`/`.expanded`/`.size`) and are not written to plugin config; whether the control is shown at all is decided by plugin config.
+The form is driven by the pointer and the buttons and is not persisted: a reload always starts collapsed. Position, pinning, and size are browser-local interface preferences (`localStorage` keys `opencode-go-live.overlay.pos`/`.pinned`/`.size`) and are not written to plugin config; whether the control is shown at all is decided by plugin config.
 
 The host balance route `GET /api/opencode-go-live/balance` supplies the data: the host queries `https://opencode.ai/zen/go/v1/usage` with the credential named by `apiKeyEnv` and hands only the normalized usage to the browser, so the API key never leaves the host process. That endpoint does not appear in OpenCode's public documentation and is an upstream implementation convention; if upstream changes it, the panel reports a failed query rather than affecting model calls.
 
@@ -191,12 +201,12 @@ The catalog fields belong to plugin config; the plugin's Models card edits the A
 | A model is selectable but API calls fail | Catalog loading and model calls are independent. Check DSH call errors and service logs, and use the error code to separate authentication, permission, rate-limit, and network problems; never paste keys into logs or tickets. |
 | Old models still show after a refresh | Check the refresh warning; the plugin retains the last successful catalog when the source fails, every entry is rejected, or the snapshot cannot be saved. |
 | The switch is on but no overlay appears | The overlay lives on the browser frame's floating layer, so confirm the page is the Web client rather than a terminal session; if the panel's × was used, the Models-card switch was turned off in step — turn it back on. |
-| Only a small chip appears in the corner | That is the default form: the chip shows the 5-hour bar and usage percent, expands into the full panel on hover, and collapses when the mouse leaves. |
-| The overlay cannot be dragged | It is pinned; click the pin button (filled means pinned) to unlock it. Both the chip and the panel can then be dragged. |
+| Only a small ring appears in the corner | That is the collapsed default form: the ring shows the 5-hour used share with `Go-<percent>` beside it, promotes to the brief form on hover, and returns there when the mouse leaves. |
+| The overlay cannot be dragged | It is pinned; click the pin button (filled means pinned) to unlock it. All three forms can then be dragged. |
 | Dragging the overlay at the top moves the whole window | An older defect: the host composes window drag regions by geometry, and an overlay moved to the top overlapped a drag row without being subtracted. This fix subtracts the whole overlay with `no-drag` and asks the host to re-collect the drag regions after expanding, moving, resizing, or a data change; it takes effect after upgrading the plugin and reloading the client. |
-| The panel stays expanded after the mouse leaves | Keep-expanded is on; click the square-frame arrow button (filled means on) to release it. |
+| The panel stays expanded after the mouse leaves | That is deliberate: the full form exists to read the three billing windows, and only Collapse returns it to the brief form. |
 | The panel is too narrow/tall, or resizing does nothing | The size is limited to between 200×120 and 480×520 and never exceeds the viewport; drag the bottom-right handle, or focus it and use the arrow keys. Clearing `opencode-go-live.overlay.size` restores the default width and content-driven height. |
-| The position or pinned state is wrong | These preferences live in the browser's `localStorage` (keys `opencode-go-live.overlay.*`); clear them to restore the defaults (bottom-right, unpinned, not kept expanded, default size). |
+| The position or pinned state is wrong | These preferences live in the browser's `localStorage` (keys `opencode-go-live.overlay.*`); clear them to restore the defaults (bottom-right, unpinned, default size). The form itself is not persisted, so a reload always starts collapsed. |
 | The overlay reports a missing API key | The card has no saved key yet, or this profile uses a different credential reference; enter and apply the key in the card. |
 | The overlay reports no OpenCode Go subscription | Upstream answered 403, meaning the key's account has no Go subscription (the Zen prepaid balance is outside this panel's scope). |
 | The overlay reports a failed query | The host cannot reach `https://opencode.ai/zen/go/v1/usage`, or upstream has moved that endpoint; model calls are unaffected — check against the endpoint note above. |

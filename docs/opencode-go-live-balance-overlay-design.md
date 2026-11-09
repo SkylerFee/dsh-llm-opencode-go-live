@@ -509,3 +509,58 @@ The user asked for the updated-at time to be shown in 24-hour format. The origin
 - **Fix**: a new `formatClock(iso)` helper passes `{ hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit' }` explicitly. `hourCycle: 'h23'` is used rather than `hour12: false` because some ICU versions read `hour12: false` as `h24` (midnight rendered as `24:00`); spelling out two-digit hour, minute, and second keeps zero padding and a stable field width while still using the local zone and the browser's digit/ordering conventions.
 - **Tightened in passing**: an unparseable timestamp now returns `null`, so the whole footer row is hidden; previously it rendered a literal `Invalid Date`.
 - **Test**: a new `tests/client.spec.ts` case asserts the rendered text equals the `HH:MM:SS` built from the local `getHours/getMinutes/getSeconds` and that it carries no `AM`/`PM` marker; a second mount sets `checkedAt` to `not-a-timestamp` and asserts the row does not exist. Reverting the implementation to `toLocaleTimeString()` defaults, or dropping the unparseable-timestamp `null` branch, makes that case fail (verified).
+
+### 11.8 Three display forms: ring, brief, full (2026-11-09)
+
+The user reported that the original two forms (chip ↔ full panel) were not enough and asked for three: the default collapsed form becomes a ring, hover shows "the previous collapsed style but with every button", and only the expand button reveals the full allowance.
+
+#### 11.8.1 Forms and state machine
+
+The three forms replace the former `hovered` + `expandPinned` booleans with a single `mode`: `ring` / `brief` / `full`.
+
+| Form | Entered by | Content | Buttons |
+|---|---|---|---|
+| `ring` | default; leaving `brief` | ring (arc = 5-hour used share) + `Go-38%` | none |
+| `brief` | hovering, clicking, or Enter on `ring` | the former chip: `Go` + 56px bar + percent | expand, pin, refresh, close |
+| `full` | the expand button in `brief` | three windows + updated time + resize handle | collapse, pin, refresh, close |
+
+The downgrade rules are the easy thing to get wrong here:
+
+- `brief` responds to the pointer leaving by going back to `ring`;
+- **`full` ignores the pointer leaving** and only the collapse button takes it to `brief`; a subsequent pointer leave then reaches `ring`.
+
+That is not an implementation shortcut. `full` exists to read the three billing windows, and collapsing to a small capsule the moment the pointer drifts away would eat the data. The user settled the trade-off ("leaving does not collapse it; the expand button goes back to the brief state, which then follows the normal leave logic").
+
+The ring is a pill whose width follows its content rather than a fixed pixel size: a 16px ring plus text on the right, so a different number of digits only changes its own width.
+
+#### 11.8.2 Ring geometry
+
+`ringIcon(percent, color)` draws two `<circle>` elements: a full track and a value arc. The arc length uses the stroke centre line — `r = (RING_SIZE - RING_STROKE) / 2 = 6.5`, circumference `2πr ≈ 40.84`, `stroke-dasharray="{used/100*C} {C}"`. Rotating the circle `-90deg` makes the arc grow clockwise from twelve o'clock. With `percent === null` (no data yet or a failed query) only the track is drawn; with `used === 0` the value arc gets `opacity: 0` so a round line cap never paints an isolated dot at 0%.
+
+Colours reuse `barColor()`: rate-limited red / ≥80% amber / otherwise green. The ring and its text share one colour; no new palette is introduced.
+
+#### 11.8.3 Keyboard and devices without hover
+
+The collapsed form is itself `role="button"` with `tabIndex: 0`, so clicking, Enter, and Space all reach `brief`. That is the only entry point for touch devices and keyboard users — `ring` carrying no buttons is deliberate, concentrating every action in `brief`.
+
+Dragging stays bound to the permanently mounted anchor and is independent of the button count, so all three forms remain draggable while unpinned.
+
+#### 11.8.4 Storage semantics change
+
+- **Removed** `OVERLAY_EXPANDED_KEY` (`opencode-go-live.overlay.expanded`): the "keep expanded" it recorded was replaced by the expand/collapse button, and the form is no longer persisted. A stale key left in a browser is harmless and never read.
+- `.pos`, `.pinned`, and `.size` are unchanged; no migration is needed.
+
+#### 11.8.5 Button icons
+
+`expandIcon(toward)` became bidirectional: `toward === 'full'` points the arrow outward (expand) and `'brief'` points it inward (collapse). The former "filled = pinned" fill semantics left with the keep-expanded button, replaced by the arrow direction alone.
+
+#### 11.8.6 Tests
+
+`tests/client.spec.ts` rewrites five existing cases and adds three:
+
+- the ring arc is asserted as a circumference ratio (38% → arc/circumference ≈ 0.38, tolerance 0.001) instead of a hard-coded pixel value;
+- `ring` has no buttons, is focusable, and enters `brief` on click, Enter, and Space;
+- `brief` is "a body button plus four action buttons", i.e. five buttons (the body button's `aria-label` equals the expand label, so the set is checked by both element count and the de-duplicated label list);
+- `full` ignores pointer leave, and only after the collapse button does a leave reach `ring`;
+- with no data the ring has one circle and reads `Go-…`; a failed query reads `Go-⚠`;
+- the expand and collapse arrow paths are mirror images.
