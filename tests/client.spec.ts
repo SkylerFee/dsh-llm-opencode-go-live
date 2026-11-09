@@ -500,6 +500,71 @@ async function mountOverlay(options: {
   }
 }
 
+test('按钮悬浮提示延迟出现、移出与按下立即消失，禁用按钮不显示', async () => {
+  // client bundle 的 TOOLTIP_DELAY_MS 平行定义。
+  const TOOLTIP_DELAY_MS = 220
+  const clock = { now: 1_000_000 }
+  const overlay = await mountOverlay({ clock, response: rollingOnly })
+  try {
+    await overlay.ready()
+    overlay.hover()
+
+    /** 当前渲染树里是否有可见的提示气泡（同一时刻最多一个）。 */
+    const tipOf = () => find(
+      overlay.render(), node => node.props?.['data-opencode-go-live-overlay'] === 'tooltip',
+    )
+    /** 取某个按钮元素（内层 button 带 data-* 标记）。 */
+    const buttonOf = (marker: string) => find(
+      overlay.render(), node => node.props?.['data-opencode-go-live-overlay'] === marker,
+    )!
+
+    // 初始无提示
+    assert.equal(tipOf(), undefined, '未悬停时不得显示提示')
+
+    // 悬停后未到期：不显示（避免掠过的指针弹提示）
+    buttonOf('pin').props.onMouseEnter({})
+    assert.equal(tipOf(), undefined, '提示必须延迟出现')
+    clock.now += TOOLTIP_DELAY_MS - 1
+    overlay.flushTimers()
+    assert.equal(tipOf(), undefined, '未到延迟阈值不得显示')
+
+    // 到期：显示，且文案来自词典短标签
+    clock.now += 2
+    overlay.flushTimers()
+    const tip = tipOf()
+    assert.ok(tip, '到期后必须显示提示')
+    assert.equal(tip.props.role, 'tooltip', '提示必须带 tooltip 角色')
+    assert.equal(tip.children[0], overlay.dictionary.pinOverlay, '提示文案使用现有短标签')
+    assert.equal(tip.props.style.pointerEvents, 'none', '提示不得参与点击命中')
+
+    // 移出：立即消失
+    buttonOf('pin').props.onMouseLeave({})
+    assert.equal(tipOf(), undefined, '移出后提示必须立即消失')
+
+    // 按下：立即消失，且原 pointerdown 仍被调用（stopDrag 依赖它）
+    let dragStopped = false
+    buttonOf('pin').props.onMouseEnter({})
+    clock.now += TOOLTIP_DELAY_MS + 1
+    overlay.flushTimers()
+    assert.ok(tipOf(), '再次悬停到期后应显示')
+    buttonOf('pin').props.onPointerDown({ stopPropagation: () => { dragStopped = true } })
+    assert.equal(tipOf(), undefined, '按下后提示必须消失')
+    assert.equal(dragStopped, true, '提示组件必须转发原有的 pointerdown 处理')
+
+    // 刷新按钮在请求进行中禁用：悬停不显示提示
+    const refresh = () => overlay.render()
+    find(refresh(), node => node.props['data-opencode-go-live-overlay'] === 'refresh')!.props.onClick()
+    const disabledRefresh = find(refresh(), node => node.props['data-opencode-go-live-overlay'] === 'refresh')!
+    assert.equal(disabledRefresh.props.disabled, true)
+    disabledRefresh.props.onMouseEnter({})
+    clock.now += TOOLTIP_DELAY_MS + 1
+    overlay.flushTimers()
+    assert.equal(tipOf(), undefined, '禁用按钮不得显示提示')
+  } finally {
+    overlay.restore()
+  }
+})
+
 test('收缩态渲染圆环，悬停升为长条，点击展开显示三个计费窗口，移开回到圆环', async () => {
   // 契约测试：客户端消费的正是宿主路由真实产出的 envelope，而不是手写的近似结构。
   const overlay = await mountOverlay({

@@ -564,3 +564,38 @@ Dragging stays bound to the permanently mounted anchor and is independent of the
 - `full` ignores pointer leave, and only after the collapse button does a leave reach `ring`;
 - with no data the ring has one circle and reads `Go-…`; a failed query reads `Go-⚠`;
 - the expand and collapse arrow paths are mirror images.
+
+### 11.9 Button tooltips drawn by the plugin (2026-11-09)
+
+The user asked to "add a hover tip with a description to every button". Checking the existing code first turned up a premise worth stating: **the overlay buttons already carried native `title`**. The gap was not absence but experience — a native browser tooltip waits about a second, cannot be styled, and does not follow the theme.
+
+#### 11.9.1 Scope
+
+Only the usage overlay's interactive controls are covered (pin, expand/collapse, refresh, close, and the brief form's body). **The card's buttons are deliberately excluded**: "Edit", "Apply", and "Refresh model list" already carry visible text labels, so a tooltip adds almost nothing, while wrapping them adds a `span` around every button and disturbs the locator assertions of six existing tests. Low value, real cost — they stay as they were.
+
+The collapsed capsule is excluded too: the pointer entering it immediately promotes it to the brief form, so a tooltip could never appear — it would be dead interaction from the start. Touch devices have no hover either. The capsule keeps its `aria-label` for screen readers.
+
+#### 11.9.2 Implementation
+
+`tipButton(tip, props, ...children)` is a thin wrapper: an outer `span` handles positioning and the inner element stays a native `<button>`, so focus, Enter/Space, and disabled semantics all come from the browser rather than being reimplemented.
+
+| Moment | Behavior |
+|---|---|
+| `mouseenter` | Starts a `TOOLTIP_DELAY_MS` (220ms) timer, so a passing pointer never flashes a tip |
+| Timer fires | Renders the bubble with `role="tooltip"` and the existing dictionary short label |
+| `mouseleave` | Cancels the timer and hides immediately |
+| `pointerdown` | Cancels the timer, hides immediately, then **forwards the original handler** (`stopDrag` depends on it) |
+| `disabled` | Never starts the timer |
+
+The bubble is `position: absolute` with `pointerEvents: 'none'`: it never takes part in hit testing, and it never grows the overlay's box — the latter matters because the anchor geometry feeds the host's Electron drag-region calculation (§11.5.2).
+
+#### 11.9.3 Two implementation traps
+
+1. **`children` must be a rest parameter**: both the collapsed and brief forms pass several children (ring + text, `Go` + bar + percent). An early version took a single `children` argument and silently dropped the rest, which showed up as missing text. They must also be spread (`...children`) into `h()`; otherwise a single child becomes an array and breaks existing assertions.
+2. **The resize handle is excluded**: it keeps `role="separator"` and its native `title`. Two reasons — it is not a button, so button semantics would mislead screen readers; and `resizeOrigin` relies on `currentTarget.offsetParent === the panel`, so an extra positioning wrapper would make `offsetParent` the wrapper and measure 16×16 instead of the panel, starting a resize from the wrong origin.
+
+#### 11.9.4 Tests
+
+A new case asserts: no tip by default; still none before the delay elapses; once it elapses the tip appears with the dictionary short label, `role="tooltip"`, and `pointerEvents: none`; `mouseleave` hides it immediately; `pointerdown` hides it immediately **and forwards the original handler**; a disabled button shows no tip after hovering.
+
+Only `useState`/`useEffect` are used — both the static client's minimal React and the test sandbox implement just those two hooks, with no `useRef`/`useMemo`.
