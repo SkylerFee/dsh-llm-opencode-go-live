@@ -146,6 +146,12 @@ Each row shows the percent, a bar, and a reset countdown; the bar turns amber ne
 | ⟳ Refresh | Queries immediately. The button has only two states: clickable, and **Refreshing…** (the glyph becomes a spinning loader and the button is disabled until the result arrives or the 20-second fallback timeout exits the animation). **It becomes clickable again the moment the animation ends** — there is no cooldown wait; consecutive refreshes are limited only by "one request at a time". With the system's "reduce motion" setting on, the icon stops spinning but still shows the loader and the "Refreshing…" label. |
 | × Close | Writes the plugin's `showBalanceOverlay` to `false`, which **turns the Models-card switch off in step**; reopen that switch to show the control again. |
 
+### Button tooltips
+
+Rest the pointer on any of the overlay's icon buttons and after about 0.2s a tip appears below it describing what the button does (pin, expand/collapse, refresh, close). The plugin draws that bubble itself rather than relying on the browser's native tooltip, so it appears faster and follows the theme.
+
+Moving the pointer away or pressing the button hides it immediately, and a disabled button (such as Refresh while a request is in flight) never shows a tip. The resize handle in the bottom-right corner still uses the native browser tooltip.
+
 ### Resizing the panel
 
 The expanded panel has a resize handle in its bottom-right corner (two diagonal strokes, with a diagonal resize cursor):

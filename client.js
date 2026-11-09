@@ -59,8 +59,12 @@ window.__ModuleLoader__.load({
     const spinStyleSheet = `@keyframes ${SPIN_ANIMATION_NAME}{to{transform:rotate(360deg)}}`
     /** 拖拽结束后的这段时间内的点击视为拖拽余波，不触发展开。 */
     const DRAG_CLICK_SUPPRESS_MS = 250
+    /** 悬停多久才显示按钮提示：既能避免掠过的指针弹出提示，又比原生 title 的约 1 秒快。 */
+    const TOOLTIP_DELAY_MS = 220
     /** 最近一次拖拽移动的时间戳；徽章整块可拖，用它区分拖动与点击。 */
     let overlayDragMovedAt = 0
+    /** 挂起中的按钮提示定时器；全局只保留一个，指针移出或按下时统一取消。 */
+    let tipTimer = null
     const keyFormat = /^[\x21-\x7e]+$/
     const envLine = /^[A-Z][A-Z0-9_]*=[^=]/
     const cardStyle = {
@@ -112,7 +116,13 @@ window.__ModuleLoader__.load({
     const overlayBodyStyle = {
       display: 'grid', gap: 8, alignContent: 'start', minHeight: 0, overflow: 'auto',
     }
-    /** 右下角调整手柄：面板大小可变，但被钳制在最小与最大尺寸之间。 */
+    /**
+     * 右下角调整手柄：面板大小可变，但被钳制在最小与最大尺寸之间。
+     * 它保留 `role="separator"` 与原生 `title` 而不套自绘提示：
+     * ① 它不是按钮，套上按钮语义会误导读屏用户；
+     * ② `resizeOrigin` 依赖 `currentTarget.offsetParent === 面板` 的几何关系，
+     *    多包一层定位外壳会把 offsetParent 变成外壳，量到 16×16 而非面板尺寸。
+     */
     const overlayResizeHandleStyle = {
       position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, padding: 0,
       display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
@@ -161,6 +171,21 @@ window.__ModuleLoader__.load({
       transform: 'rotate(-90deg)', transformOrigin: 'center',
       transition: 'stroke-dasharray 240ms ease-out',
     }
+    /**
+     * 自绘按钮提示的定位壳：贴在按钮下方居中展开。
+     * 用 `position: absolute` + `pointer-events: none`，不参与按钮的命中区域，
+     * 也不会把悬浮窗的拖拽几何撑大（那会连带影响宿主的窗口拖拽区计算）。
+     */
+    const tipWrapStyle = { position: 'relative', display: 'inline-flex' }
+    const tipBubbleBaseStyle = {
+      position: 'absolute', zIndex: 2147483000, pointerEvents: 'none',
+      padding: '3px 7px', borderRadius: 6, fontSize: 11, lineHeight: 1.4, whiteSpace: 'nowrap',
+      background: 'var(--dsw-alias-bg-layer-3)', color: 'var(--dsw-alias-label-primary)',
+      border: '0.5px solid var(--dsw-alias-border-l3)',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.18)',
+    }
+    /** 气泡贴在按钮下方居中；`pointer-events: none` 保证它不参与命中。 */
+    const tipPlacementStyle = { top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 6 }
     const trackStyle = {
       height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-bg-layer-2)',
     }
@@ -383,6 +408,59 @@ window.__ModuleLoader__.load({
     /** 刚刚发生过拖拽时忽略随后的点击，避免移动位置被当成点击展开。 */
     function draggedRecently() {
       return Date.now() - overlayDragMovedAt < DRAG_CLICK_SUPPRESS_MS
+    }
+
+    /**
+     * 带悬浮提示的按钮。
+     * 提示用自绘气泡而不是原生 `title`：原生提示延迟约 1 秒且样式不可控，
+     * 而这里的按钮要靠图标识别，需要更快、与主题一致、可被测试断言的反馈。
+     *
+     * 行为要点：
+     * - 悬停 `TOOLTIP_DELAY_MS` 后才显示，掠过的指针不会弹出提示；
+     * - 指针移出、按下按钮（点击即用，提示已无意义）、或按钮变为禁用时立即隐藏；
+     * - 气泡 `pointerEvents: none`，不参与点击命中，也不改变悬浮窗的拖拽几何；
+     * - `aria-label` 与 `data-tip` 同时提供：读屏软件读前者，测试与视觉走后者。
+     *
+     * 只使用 `useState`/`useEffect`——静态客户端与测试沙箱都只实现这两个 hook。
+     */
+    function tipButton(tip, props, ...children) {
+      const [visible, setVisible] = React.useState(false)
+      const disabled = props.disabled === true
+      // 卸载时清掉挂起的定时器，避免组件已消失才触发 setState。
+      React.useEffect(() => () => { clearTipTimer() }, [])
+      return h('span', { style: tipWrapStyle },
+        h('button', {
+          ...props,
+          'aria-label': props['aria-label'] ?? tip,
+          onMouseEnter: event => {
+            if (props.onMouseEnter) props.onMouseEnter(event)
+            if (disabled || !tip) return
+            clearTipTimer()
+            tipTimer = setTimeout(() => setVisible(true), TOOLTIP_DELAY_MS)
+          },
+          onMouseLeave: event => {
+            if (props.onMouseLeave) props.onMouseLeave(event)
+            clearTipTimer()
+            setVisible(false)
+          },
+          // 按下即收起：提示的作用是说明按钮，操作已经开始就不该继续挡视线。
+          onPointerDown: event => {
+            clearTipTimer()
+            setVisible(false)
+            if (props.onPointerDown) props.onPointerDown(event)
+          },
+        }, ...children),
+        visible && tip ? h('span', {
+          'data-opencode-go-live-overlay': 'tooltip', role: 'tooltip',
+          style: { ...tipBubbleBaseStyle, ...tipPlacementStyle },
+        }, tip) : null)
+    }
+
+    /** 取消挂起的提示定时器；指针移出与按下共用，避免迟到显示。 */
+    function clearTipTimer() {
+      if (tipTimer === null) return
+      clearTimeout(tipTimer)
+      tipTimer = null
     }
 
     /**
@@ -1031,22 +1109,22 @@ window.__ModuleLoader__.load({
           const rollingPercent = isRecord(rolling) && typeof rolling.percent === 'number'
             ? Math.min(100, Math.max(0, Math.round(rolling.percent)))
             : null
-          const pinButton = h('button', {
+          const pinLabel = t(pinned ? 'unpinOverlay' : 'pinOverlay')
+          const pinButton = tipButton(pinLabel, {
             type: 'button', 'aria-pressed': pinned, onPointerDown: stopDrag,
+            'data-opencode-go-live-overlay': 'pin',
             style: {
               ...overlayIconButtonStyle,
               color: pinned ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-secondary)',
             },
-            title: t(pinned ? 'unpinOverlay' : 'pinOverlay'), 'aria-label': t(pinned ? 'unpinOverlay' : 'pinOverlay'),
             onClick: togglePinned,
           }, pinIcon(pinned))
           // 展开／收起按钮：brief 中显示「展开」，full 中显示「收起」。
           const isFull = mode === OVERLAY_MODE_FULL
           const expandLabel = t(isFull ? 'collapseOverlay' : 'expandOverlay')
-          const expandButton = h('button', {
+          const expandButton = tipButton(expandLabel, {
             type: 'button', 'aria-pressed': isFull, 'data-opencode-go-live-overlay': 'expand',
             onPointerDown: stopDrag, style: overlayIconButtonStyle,
-            title: expandLabel, 'aria-label': expandLabel,
             onClick: toggleFullFromBrief,
           }, expandIcon(isFull ? OVERLAY_MODE_BRIEF : OVERLAY_MODE_FULL))
           // 刷新按钮的两种状态：空闲可点、请求进行中（图标转为加载动画并禁用）。
@@ -1056,21 +1134,20 @@ window.__ModuleLoader__.load({
               animation: `${SPIN_ANIMATION_NAME} ${SPIN_DURATION_MS}ms linear infinite`,
             })
             : '⟳'
-          const refreshButton = h('button', {
+          const refreshButton = tipButton(refreshLabel, {
             type: 'button', onPointerDown: stopDrag, disabled: refreshing,
             'data-opencode-go-live-overlay': 'refresh',
             'aria-busy': refreshing,
             style: refreshing
               ? { ...overlayIconButtonStyle, opacity: 0.5, cursor: 'default' }
               : overlayIconButtonStyle,
-            title: refreshLabel, 'aria-label': refreshLabel,
             onClick: requestRefresh,
           }, refreshIcon)
 
-          const closeButton = h('button', {
+          const closeButton = tipButton(t('closeOverlay'), {
             type: 'button', onPointerDown: stopDrag, disabled: saving,
             'data-opencode-go-live-overlay': 'close',
-            style: overlayIconButtonStyle, title: t('closeOverlay'), 'aria-label': t('closeOverlay'),
+            style: overlayIconButtonStyle,
             onClick: closeOverlay,
           }, '×')
 
@@ -1081,6 +1158,8 @@ window.__ModuleLoader__.load({
               ? `${t('chipTitle')}-${t(envelope !== null && envelope.ok === false ? 'chipFailed' : 'chipPending')}`
               : `${t('chipTitle')}-${rollingPercent}%`
             return h('div', anchorProps,
+            // 不加悬浮提示：指针进入收缩态立即升为长条态，提示来不及显示；
+            // 触摸设备没有 hover，同样用不到。`aria-label` 仍然给读屏软件。
             h('div', {
               'data-opencode-go-live-overlay': 'ring-chip',
               style: ringChipStyle,
@@ -1101,9 +1180,9 @@ window.__ModuleLoader__.load({
             // 悬停态：沿用原 chip 的长条形态（横条 + 百分比），补全全部操作按钮。
             return h('div', anchorProps,
             h('div', { 'data-opencode-go-live-overlay': 'chip', style: chipStyle },
-              h('button', {
+              tipButton(t('expandOverlay'), {
                 type: 'button', style: chipMainStyle,
-                title: t('expandOverlay'), 'aria-label': t('expandOverlay'),
+                'data-opencode-go-live-overlay': 'chip-main',
                 // 点击主体进入完整卡片；触摸设备由此看到三个窗口。
                 onClick: () => { if (!draggedRecently()) setMode(OVERLAY_MODE_FULL) },
               },
