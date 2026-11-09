@@ -414,6 +414,18 @@ window.__ModuleLoader__.load({
       return Date.now() - overlayDragMovedAt < DRAG_CLICK_SUPPRESS_MS
     }
 
+    /**
+     * 归一化组件的 children。
+     * 真实 React 的 `createElement(Comp, props, onlyChild)` 会把单个子节点直接放进
+     * `props.children`（不是数组），对非数组做展开会抛 `TypeError: children is not iterable`；
+     * 而本插件的按钮都只传一个图标或一个字符串，正是这种形态。
+     * 测试沙箱的 createElement 用 rest 收集子节点，永远是数组，因此测不出这个差异。
+     */
+    function tipChildren(children) {
+      if (children === undefined || children === null || children === false) return []
+      return Array.isArray(children) ? children : [children]
+    }
+
     /** 提示按钮的实例键：文案在同一悬浮窗内唯一，足以区分实例。 */
     function overlayTipKey(tip) {
       return String(tip === null || tip === undefined ? '' : tip)
@@ -476,7 +488,7 @@ window.__ModuleLoader__.load({
             setVisible(false)
             if (props.onPointerDown) props.onPointerDown(event)
           },
-        }, ...children),
+        }, ...tipChildren(children)),
         visible && tip ? h('span', {
           'data-opencode-go-live-overlay': 'tooltip', 'data-tip': tip, role: 'tooltip',
           style: { ...tipBubbleBaseStyle, ...tipPlacementStyle },
