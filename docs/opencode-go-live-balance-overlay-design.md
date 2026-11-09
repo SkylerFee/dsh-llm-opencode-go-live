@@ -599,3 +599,14 @@ The bubble is `position: absolute` with `pointerEvents: 'none'`: it never takes 
 A new case asserts: no tip by default; still none before the delay elapses; once it elapses the tip appears with the dictionary short label, `role="tooltip"`, and `pointerEvents: none`; `mouseleave` hides it immediately; `pointerdown` hides it immediately **and forwards the original handler**; a disabled button shows no tip after hovering.
 
 Only `useState`/`useEffect` are used — both the static client's minimal React and the test sandbox implement just those two hooks, with no `useRef`/`useMemo`.
+
+### 11.10 The full form is reached only through Expand (2026-11-09)
+
+The user reported that "clicking also expands after hover" and asked to keep only the button.
+
+Root cause: the brief form's **body was itself a `<button>`** wired to `onClick → setMode(full)`. That entry point originally served touch devices (no hover means clicking the body was the way in), but a mouse user hovering into the brief form and clicking casually got the full form too, contradicting "the button expands it".
+
+- **The body is now display-only**: `chip-main` changed from `<button>` to `<span>`, dropping `onClick` and `cursor: pointer`; the bar and percent still render.
+- **Touch devices still get there**: tapping the collapsed form → brief form, then the Expand button → full form. That path never needs hover, so removing the body click does not cost touch users the full panel.
+- **Regression guard**: `tests/client.spec.ts` asserts `chip-main` is a `span` with no `onClick` and no pointer cursor, and that the brief form's button count dropped from 5 to 4. Turning the body back into a button fails that case (verified).
+- Cleanup in passing: `chipMainStyle` lost its now-unused `cursor: pointer`.

@@ -596,3 +596,14 @@ async function queryBalance(signal) {
 新增用例断言：提示默认不存在；悬停后未到期仍不显示；到期后出现且文案等于词典短标签、`role="tooltip"`、`pointerEvents: none`；`mouseleave` 立即隐藏；`pointerdown` 立即隐藏**且转发原处理**；禁用按钮悬停后不显示。
 
 只使用 `useState`/`useEffect`——静态客户端的极简 React 与测试沙箱都只实现这两个 hook，没有 `useRef`/`useMemo`。
+
+### 11.10 完整态只由「展开」按钮进入（2026-11-09）
+
+用户反馈「hover 后点击也能展开」，要求只保留点击按钮的逻辑。
+
+根因：长条态（brief）的**主体本身是一个 `<button>`**，绑定了 `onClick → setMode(full)`。这个入口是早期为触摸设备留的（无 hover 时点主体进完整态），但鼠标用户 hover 到长条后随手点一下同样会展开，与「点按钮才展开」的预期冲突。
+
+- **主体改为纯展示**：`chip-main` 从 `<button>` 改为 `<span>`，去掉 `onClick` 与 `cursor: pointer`；进度条与百分比照旧渲染。
+- **触摸设备仍可达**：收缩态点击 → 长条态，再点「展开」按钮 → 完整态。整条链路不依赖 hover，因此移除主体点击不会让触摸设备失去完整面板。
+- **回归守护**：`tests/client.spec.ts` 断言 `chip-main` 是 `span`、无 `onClick`、无 pointer 光标，且长条态按钮数从 5 降为 4。把主体改回按钮会使该用例失败（已验证）。
+- 顺带清理：`chipMainStyle` 去掉不再需要的 `cursor: pointer`。
