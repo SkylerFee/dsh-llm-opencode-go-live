@@ -16,7 +16,7 @@ Installing from npm is recommended. Use the installed `dsh` CLI to add the publi
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-Without a version or tag, this installs `latest`. Append `@alpha` to follow prereleases, or `@0.3.0` to pin this release. Then restart the Web profile.
+Without a version or tag, this installs `latest`. Append `@0.3.0` to pin this release. Then restart the Web profile.
 
 When running DSH from source, use this command from the DSH repository root:
 

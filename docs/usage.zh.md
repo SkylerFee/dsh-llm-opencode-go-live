@@ -16,7 +16,7 @@
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-不指定版本或标签时安装 `latest`。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.3.0`。安装后重启 Web profile。
+不指定版本或标签时安装 `latest`。固定本次发布版本时，在包名后加 `@0.3.0`。安装后重启 Web profile。
 
 从源码运行 DSH 时，在 DSH 仓库根目录执行：
 
