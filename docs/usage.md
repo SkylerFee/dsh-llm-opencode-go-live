@@ -102,10 +102,6 @@ The catalog comes from Models.dev and fetching it needs no API key; the key is r
 
 The card's **Show usage overlay** switch controls the bottom-right usage control. It writes the plugin's `showBalanceOverlay` config, whose **default is on**, so a fresh install shows the control and the choice survives a profile restart. When the host cannot report the field (for example before any config write), it counts as on as well.
 
-The collapsed ring promoting to the brief form on hover and to the full panel on expand:
-
-![The usage overlay chip expanding into the full panel](img/usage-view.gif)
-
 The control has three forms, driven by the pointer and the buttons:
 
 | Form | Look | Content | Buttons |
@@ -113,6 +109,22 @@ The control has three forms, driven by the pointer and the buttons:
 | **Collapsed** (default) | ring pill | the ring's arc length is the 5-hour used share; text reads e.g. `Go-38%` | none |
 | **Brief** (hover) | horizontal pill | `Go` + bar + percent | expand, pin, refresh, close |
 | **Full** (expand) | card | three billing windows + updated time + resize handle | collapse, pin, refresh, close |
+
+**Collapsed** (the default): the ring's arc is the used share with the exact number beside it, and no buttons are shown.
+
+![Collapsed: ring pill reading Go-2%](img/default-ring.png)
+
+**Brief** (after the pointer enters the collapsed form): `Go` + bar + percent, with expand, pin, refresh, and close on the right. The body is display-only and clicking it does nothing.
+
+![Brief: Go + bar + percent with four action buttons](img/hover-ring.png)
+
+**Full** (after clicking Expand): the 5-hour, weekly, and monthly windows with usage and reset countdowns, plus the updated time at the bottom; the title-bar buttons become collapse, pin, refresh, and close.
+
+![Full: three billing windows and the updated time](img/full-card.png)
+
+> The animation below records the **older** two-form "chip ↔ full panel" interaction. It differs from the three forms above and is kept only for historical reference; the screenshots take precedence.
+
+![The older chip expanding into the full panel](img/usage-view.gif)
 
 The ring's **value arc** carries the same meaning as the full panel: green while there is room, amber at ≥80%, and the error colour under `rate-limited`; its **track** uses a neutral grey so the full circle stays visible in both the light and the dark theme, and the bar's track uses the same grey so its unfilled part is visible in the light theme too. With no data the ring draws only its track and the text reads `Go-…`; a failed query reads `Go-⚠`.
 

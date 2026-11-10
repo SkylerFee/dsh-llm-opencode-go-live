@@ -26,9 +26,15 @@ Restart the Web profile. Open **Settings → Models**, click **Edit** in the plu
 
 The card's **Show usage overlay** switch controls a bottom-right usage control (default on when unconfigured) that has three forms. The default **collapsed** form is a small ring pill whose arc length is the 5-hour used share, with text such as `Go-38%` beside it; hovering promotes it to the **brief** form (`Go` + bar + percent, plus expand, pin, refresh, and close buttons); only the expand button reaches the **full** form, which shows the OpenCode Go subscription usage percent and reset time for the rolling 5-hour, weekly, and monthly windows. The full form ignores the pointer leaving — only Collapse returns it to the brief form, and a further pointer leave returns it to collapsed. Resting the pointer on an icon button for about 0.2s shows a plugin-drawn tip describing it. All three forms are draggable while unpinned, the pin button toggles pinning (filled = pinned, hollow = unpinned, off by default), the full form resizes from its bottom-right handle (minimum 200×120, maximum 480×520, capped by the viewport) or with the arrow keys in 16px steps, and its close button turns that switch off in step. The host queries `https://opencode.ai/zen/go/v1/usage` with the same credential. That endpoint does not appear in OpenCode's public documentation and is an upstream implementation convention. The key resolves only on the host and never reaches the browser. Field reference and troubleshooting live in the [usage guide](docs/usage.md#usage-overlay).
 
-The overlay in the browser — the collapsed ring promotes to the brief form on hover, and the expand button opens the full panel:
+The overlay in the browser. The three forms, in order: **collapsed** (the default — ring plus `Go-2%`, no buttons), **brief** (on hover — `Go` + bar + percent, with expand, pin, refresh, and close buttons), and **full** (after clicking Expand — the three billing windows plus the updated time):
 
-![The usage overlay expanding from the collapsed ring into the full panel](docs/img/usage-view.gif)
+| Collapsed (default) | Brief (hover) | Full (expand) |
+| --- | --- | --- |
+| ![Collapsed: ring pill reading Go-2%](docs/img/default-ring.png) | ![Brief: Go + bar + percent with four buttons](docs/img/hover-ring.png) | ![Full: three billing windows and the updated time](docs/img/full-card.png) |
+
+The animation below records the **older** two-form "chip ↔ full panel" interaction. Its forms differ from the table above and it is kept only for historical reference:
+
+![The older chip expanding into the full panel](docs/img/usage-view.gif)
 
 The plugin's card in **Settings → Models** — saving the API key in the editor, the dynamic model list after the catalog resolves, and the live models in their own group in the model picker, with the reasoning level beside them:
 
