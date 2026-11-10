@@ -25,6 +25,14 @@ window.__ModuleLoader__.load({
     const OVERLAY_MODE_RING = 'ring'
     const OVERLAY_MODE_BRIEF = 'brief'
     const OVERLAY_MODE_FULL = 'full'
+    /**
+     * 进度轨底轨色：`label-tertiary` 降到 80% 不透明度。
+     * 100% 时浅色 3.71:1，对 4px 细横条与 3px 圆环描边偏重；80% 后浅色 2.72:1、
+     * 深色 5.53:1，仍然清晰可辨但不压过彩色进度。
+     * 写法与宿主 theme 包一致（`color-mix(in srgb, var(--token) N%, transparent)`），
+     * 用 `color-mix` 而不是 rgba 硬编码，才能同时跟随浅色/深色主题。
+     */
+    const TRACK_COLOR = 'color-mix(in srgb, var(--dsw-alias-label-tertiary) 80%, transparent)'
     /** 圆环几何：viewBox 坐标下的半径与描边宽度，弧长按描边中线计算。 */
     const RING_SIZE = 16
     const RING_STROKE = 3
@@ -175,7 +183,9 @@ window.__ModuleLoader__.load({
      * 圆环只剩进度弧、看不出「圈」。`label-tertiary` 浅色 `#81858c`(3.71:1)、
      * 深色 `#adb2b8`(7.90:1)，两主题都能读出刻度又不压过进度弧。
      */
-    const ringTrackStyle = { fill: 'none', stroke: 'var(--dsw-alias-label-tertiary)', strokeWidth: RING_STROKE }
+    const ringTrackStyle = {
+      fill: 'none', stroke: TRACK_COLOR, strokeWidth: RING_STROKE,
+    }
     const ringValueStyle = {
       fill: 'none', strokeWidth: RING_STROKE, strokeLinecap: 'round',
       transform: 'rotate(-90deg)', transformOrigin: 'center',
@@ -203,7 +213,7 @@ window.__ModuleLoader__.load({
      * `#81858c`(3.71:1)、深色 `#adb2b8`(7.90:1)，两种主题都能读出「剩余」部分。
      */
     const trackStyle = {
-      height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--dsw-alias-label-tertiary)',
+      height: 4, borderRadius: 2, overflow: 'hidden', background: TRACK_COLOR,
     }
     const copy = {
       zh: {
