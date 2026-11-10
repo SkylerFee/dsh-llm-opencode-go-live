@@ -16,7 +16,7 @@ DeepSeek Harness 的 OpenCode Go 动态模型目录插件。它从 Models.dev �
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-该命令安装 npm 的 `latest` 标签。跟进预发布时，在包名后加 `@alpha`；固定本次发布版本时，加 `@0.3.0`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
+该命令安装 npm 的 `latest` 标签。固定本次发布版本时，在包名后加 `@0.3.0`。从源码运行 DSH 时，可在 DSH 仓库根目录执行 `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live`。[使用指南](docs/usage.zh.md#从-npm-安装)提供 npm 安装说明，以及开发时的源码目录和 tarball 安装方式。
 
 在 Web 客户端的插件页安装并启用插件：
 

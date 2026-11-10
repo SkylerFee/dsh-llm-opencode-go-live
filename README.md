@@ -16,7 +16,7 @@ Install from npm (recommended) into the Web profile with the installed `dsh` CLI
 dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 ```
 
-This installs the npm `latest` tag. To follow prereleases, append `@alpha`; to pin this release, append `@0.3.0`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
+This installs the npm `latest` tag. To pin this release, append `@0.3.0`. When running DSH from source, use `pnpm dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live` from the DSH repository root. The [usage guide](docs/usage.md#install-from-npm) covers npm installation and the source-checkout and tarball alternatives for development.
 
 Installing the package and enabling it from the Web client's plugin page:
 
