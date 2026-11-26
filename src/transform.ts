@@ -1,5 +1,6 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { apiOf, isPolicyConsistent, policyFor } from './policy.js'
+import { vendorOf } from './vendor.js'
 import type { OpenCodeGoApi } from './policy.js'
 import type { SourceModel, SourceProvider } from './source.js'
 
@@ -15,6 +16,8 @@ export interface CatalogDiagnostic {
 export interface TransformResult {
   models: readonly Model<Api>[]
   diagnostics: readonly CatalogDiagnostic[]
+  /** 模型 id 到厂商标识的映射；仅用于界面分组，缺归属的模型不出现。 */
+  vendors: Readonly<Record<string, string>>
 }
 
 function positiveInteger(value: unknown): value is number {
@@ -36,8 +39,13 @@ export function transformProvider(provider: SourceProvider): TransformResult {
   const models: Model<Api>[] = []
   const diagnostics: CatalogDiagnostic[] = []
   if (provider.models === undefined || typeof provider.models !== 'object') {
-    return { models, diagnostics: [{ code: 'INVALID_SOURCE', message: 'source provider has no models object' }] }
+    return {
+      models,
+      diagnostics: [{ code: 'INVALID_SOURCE', message: 'source provider has no models object' }],
+      vendors: {},
+    }
   }
+  const vendors: Record<string, string> = {}
   const seen = new Set<string>()
   for (const [modelId, source] of Object.entries(provider.models)) {
     if (!isRecord(source)) {
@@ -75,6 +83,8 @@ export function transformProvider(provider: SourceProvider): TransformResult {
       diagnostics.push({ modelId, code: 'MISSING_TOOL_CALL', message: 'tool calling is not explicitly supported' })
       continue
     }
+    const vendor = vendorOf(model.canonical_model_id)
+    if (vendor !== undefined) vendors[modelId] = vendor
     models.push({
       id: modelId,
       name: typeof model.name === 'string' && model.name.length > 0 ? model.name : modelId,
@@ -91,7 +101,7 @@ export function transformProvider(provider: SourceProvider): TransformResult {
     })
   }
   diagnostics.push(...policyGroupDiagnostics(models))
-  return { models, diagnostics }
+  return { models, diagnostics, vendors }
 }
 
 /**

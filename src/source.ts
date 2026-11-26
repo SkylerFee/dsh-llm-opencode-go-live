@@ -16,6 +16,8 @@ export interface SourceModel {
   modalities?: {
     input?: string[]
   }
+  /** models.dev 的规范模型 id（`vendor/model`），前缀用于厂商分组。 */
+  canonical_model_id?: string
 }
 
 /** 来源客户端的可测试窄接口。 */

@@ -18,6 +18,13 @@ export interface CatalogSnapshot {
    * 界面只少一列，模型目录照常工作，因此不参与 `isSnapshot` 的强校验。
    */
   limits?: LimitTable
+  /**
+   * 模型 id 到厂商标识的映射，仅供界面分组。
+   *
+   * 与 `limits` 同样是纯展示信息：缺失时界面把模型归入「其他」，
+   * 不影响模型可用性，因此不参与强校验。
+   */
+  vendors?: Readonly<Record<string, string | undefined>>
 }
 
 /** 目录快照存储抽象。 */
@@ -56,6 +63,7 @@ export class JsonCatalogStore implements CatalogStore {
         checkedAt: value.checkedAt,
         diagnostics: value.diagnostics,
         ...(value.limits === undefined ? {} : { limits: value.limits }),
+        ...(value.vendors === undefined ? {} : { vendors: value.vendors }),
         models: value.models.map(model => {
           const policy = policyFor(model.id)
           return {

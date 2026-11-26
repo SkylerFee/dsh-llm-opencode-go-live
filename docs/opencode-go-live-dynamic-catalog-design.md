@@ -34,6 +34,7 @@ The plugin registers only the `opencode-go-live` route. The built-in DSH `openco
 | `src/store.ts` | Read and write the in-memory or JSON catalog snapshot. |
 | `src/diff.ts` | Compare the previous and next catalogs to report added, updated, and removed models. |
 | `src/limits.ts` | Read per-model plan allowances from the official inference listing and publish them with the snapshot for display. |
+| `src/vendor.ts` | Derive each model's vendor from the `canonical_model_id` prefix for grouping in the UI. |
 | `src/provider.ts` | Reuse `PiAiAdapter` and the pi-ai OpenCode Go transport, passing the session id upstream. |
 | `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, the manual refresh route, and credential resolution. |
 | `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing, a manual catalog refresh with a transient result notice, and the model list in the Models slot. |
@@ -89,6 +90,8 @@ Accepted models are additionally checked for protocol consistency: within one pr
 The model list shows each model's monthly allowance for all three official tiers (Go, Go Plus, Go Teams) side by side. The data comes from `go.monthly_usage` in `GET https://opencode.ai/inference/go/v1/models` — the same endpoint the official Limits table uses, and it needs no authentication. The figure is an equivalent allowance (how much API usage the model's monthly quota is worth), not an account balance, so the UI always renders it as `$n/mo` rather than a bare number.
 
 Allowances are a display-only enhancement, fully decoupled from model availability: if the fetch fails, a field is renamed, or the endpoint disappears, the refresh still publishes the catalog, the snapshot carries no `limits`, and the row shows a dash. `null` means the tier is unmetered (free models) and renders as `∞`; a missing tier also renders as a dash. Allowances update with the catalog refresh and never trigger a request of their own.
+
+The model list groups models by vendor. The vendor comes from the `canonical_model_id` prefix in models.dev (for example `moonshotai/kimi-k3`), with the internal code mapped to a readable name by `src/vendor.ts` (`moonshotai` → Moonshot, `zhipuai` → Z.ai). Grouping affects display only: the remote catalog remains the authority for which models exist and in what order, models keep catalog order inside a group, groups are ordered by model count, and models without a vendor fall into "Other" at the end. A model without `canonical_model_id` still enters the catalog, it just does not participate in grouping.
 
 ## Credentials and requests
 

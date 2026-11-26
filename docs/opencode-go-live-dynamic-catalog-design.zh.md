@@ -34,6 +34,7 @@ flowchart LR
 | `src/store.ts` | 读取和保存内存或 JSON 目录快照。 |
 | `src/diff.ts` | 比较前后两份目录，产出新增、更新和移除的模型。 |
 | `src/limits.ts` | 从官方 inference 明细表读取各模型的套餐额度，随快照发布供界面展示。 |
+| `src/vendor.ts` | 从 `canonical_model_id` 前缀推导厂商归属，供界面分组。 |
 | `src/provider.ts` | 复用 `PiAiAdapter` 和 pi-ai OpenCode Go 传输，将会话 ID 传给上游。 |
 | `src/index.ts` | 注册 Cordis 插件、模型路由、刷新任务、主动刷新路由和凭据解析。 |
 | `client.js` | 由插件分发的浏览器入口；在 Models 插槽中提供按需展开的密钥编辑、带瞬态结果提示的主动刷新和模型列表。 |
@@ -89,6 +90,8 @@ Models.dev 的 `opencode-go` 目录决定模型是否属于 live 路由。已知
 模型列表按官方三档订阅（Go / Go Plus / Go Teams）并列显示每个模型的月度额度，数据来自 `GET https://opencode.ai/inference/go/v1/models` 的 `go.monthly_usage`——这正是官网 Limits 表格自己使用的端点，无需鉴权。额度是「该模型每月约合多少美元用量」的等值额度，不是账户余额，因此界面统一带 `$n/月` 而不是裸数字。
 
 额度是纯展示增强，与模型可用性完全解耦：抓取失败、字段改名或端点下线时，刷新照常发布模型目录，快照不带 `limits`，界面那一行显示横杠。`null` 表示该档不计量（免费模型），显示 `∞`；某档缺失同样显示横杠。额度随目录刷新一起更新，不单独发起请求。
+
+模型列表按厂商分组展示。厂商取自 models.dev 的 `canonical_model_id` 前缀（如 `moonshotai/kimi-k3`），内部代号经 `src/vendor.ts` 映射为可读名（`moonshotai` → Moonshot、`zhipuai` → Z.ai）。分组只影响展示：模型成员与顺序的权威仍是远端目录，组内保持目录顺序，分组之间按模型数降序排列，无归属的模型归入「其他」并排在最后。缺少 `canonical_model_id` 的模型照常进入目录，只是不参与分组。
 
 ## 凭据与请求
 

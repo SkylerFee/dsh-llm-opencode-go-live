@@ -24,6 +24,7 @@ export type { UsageEnvelope, UsageErrorCode, UsageReport, UsageSource, UsageWind
 export { diffCatalogs } from './diff.js'
 export type { CatalogDiff } from './diff.js'
 export { createLimitsSource, LIMIT_PLANS, OPENCODE_GO_LIMITS_URL, parseLimits } from './limits.js'
+export { OTHER_VENDOR, vendorCounts, vendorLabel, vendorOf } from './vendor.js'
 export type { LimitsSource, LimitPlan, LimitTable, ModelLimit } from './limits.js'
 export { OPEN_CODE_GO_POLICIES, policyFor } from './policy.js'
 export type { OpenCodeGoApi, OpenCodeGoPolicy } from './policy.js'
@@ -251,6 +252,7 @@ export class OpenCodeGoLiveRuntime {
         models: result.models,
         diagnostics: result.diagnostics,
         ...(limits === undefined ? {} : { limits }),
+        ...(Object.keys(result.vendors).length === 0 ? {} : { vendors: result.vendors }),
       }
       await this.options.store.save(snapshot)
       if (this.disposed) return undefined
@@ -380,6 +382,8 @@ async function limitsRoute(runtime: OpenCodeGoLiveRuntime): Promise<Response> {
     // 档位顺序由服务端确定，避免客户端各自排序导致三档错位。
     plans: [...LIMIT_PLANS],
     limits: snapshot?.limits ?? {},
+    // 厂商同属展示数据，合并进同一个只读响应，避免再多一次往返。
+    vendors: snapshot?.vendors ?? {},
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
 

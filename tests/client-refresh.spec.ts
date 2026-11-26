@@ -291,3 +291,48 @@ test('模型行并列显示三档额度，缺失档位与无额度模型显示�
   const freeText = quotaText(li('Free'))
   assert.equal((freeText.match(/∞/g) ?? []).length, 3, `免费模型三档都应显示 ∞：${freeText}`)
 })
+
+test('模型列表按厂商分组，缺归属的归入「其他」并排在最后', async () => {
+  const { render, dictionary } = await mountCard({
+    ok: true, checkedAt: new Date().toISOString(),
+    plans: ['go', 'go-plus', 'go-teams'],
+    limits: {},
+    vendors: { a: 'moonshotai', b: 'moonshotai', c: 'openai' },
+  }, undefined, [
+    { id: 'a', name: 'Kimi K3' },
+    { id: 'b', name: 'Kimi K3.1 Pro' },
+    { id: 'c', name: 'GPT-6 Luna' },
+    { id: 'd', name: 'Mystery Model' }, // 无厂商
+  ])
+  const tree = render()
+
+  // 三个分组标题：Moonshot(2)、OpenAI(1)、其他(1)
+  const headers = []
+  const walk = (node) => {
+    if (Array.isArray(node)) { node.forEach(walk); return }
+    if (typeof node !== 'object' || node === null) return
+    if (typeof node.children?.[0] === 'string' && /·\s*\d+$/.test(node.children[0])) headers.push(node.children[0])
+    walk(node.children)
+  }
+  walk(tree)
+
+  assert.deepEqual(headers, ['Moonshot · 2', 'OpenAI · 1', `${dictionary.vendorOther} · 1`],
+    `分组应按模型数降序、其他组排最后，实际 ${JSON.stringify(headers)}`)
+})
+
+test('没有厂商数据时不分组，仍平铺显示全部模型', async () => {
+  const { render } = await mountCard({
+    ok: true, checkedAt: new Date().toISOString(), plans: ['go', 'go-plus', 'go-teams'], limits: {},
+  })
+  const tree = render()
+  const headers = []
+  const walk = (node) => {
+    if (Array.isArray(node)) { node.forEach(walk); return }
+    if (typeof node !== 'object' || node === null) return
+    if (typeof node.children?.[0] === 'string' && /·\s*\d+$/.test(node.children[0])) headers.push(node.children[0])
+    walk(node.children)
+  }
+  walk(tree)
+  // 没有 vendors 映射时所有模型都进「其他」，只有一个分组标题。
+  assert.equal(headers.length, 1, `应只有一个分组标题，实际 ${JSON.stringify(headers)}`)
+})
