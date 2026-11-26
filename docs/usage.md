@@ -6,7 +6,7 @@ This guide targets a DeepSeek Harness installation whose Web profile already sta
 
 ## Prerequisites and installation
 
-You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0` as peers; each range needs its explicit prerelease branch, or the harness's prerelease builds are excluded silently — every new patch line the harness opens needs another branch, and `>=0.2.2-0` is already reserved for the next one. Never collapse the OR list into `>=0.2.0-0 <0.3.0-0`: one `0.2.0` tuple does not cover `0.2.1-rc.2` and would exclude the current host. The host must also provide `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`; DSH resolves this peer to the host's pi-ai at runtime, including linked source installs, and the range covers both the 0.87.1 line and the 1.x builds hosts ship (1.0.2, 1.1.0). The plugin's pi-ai `1.1.0` development dependency supplies its standalone build and tests. The DSH Web profile must start correctly.
+You need Node.js 22.19 or newer (the floor pi-ai declares), pnpm, and a DeepSeek Harness Web profile at 0.1.7-rc.1 or newer. The plugin declares `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1` and `@deepseek-ai/dsh-credentials`, `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-llm-pi-ai`, `@deepseek-ai/dsh-settings` `>=0.1.7-rc.1` as peers; a lower bound only. The host checks peers with `includePrerelease: true`, so prereleases and later patch lines stay satisfied without extra branches; the tradeoff is that no upper bound also lets a future `0.3.0` or `1.0.0` through, so pin the plugin version when you need to stay on the 0.2 line. `@deepseek-ai/cordis` keeps its upper bound. The host must also provide `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`; DSH resolves this peer to the host's pi-ai at runtime, including linked source installs, and the range covers both the 0.87.1 line and the 1.x builds hosts ship (1.0.2, 1.1.0). The plugin's pi-ai `1.1.0` development dependency supplies its standalone build and tests. The DSH Web profile must start correctly.
 
 ### Install from npm
 
@@ -90,13 +90,18 @@ The same install and enable flow driven from the Web client's plugin page:
 1. Start the Web profile, open **Settings → Models**, and find the plugin-owned **OpenCode Go (Live)** card.
 2. The card shows only the key status and the model list by default. Click **Edit**, enter the OpenCode Go key in the **API Key** field, and apply it — or click **Cancel** to discard the input. The key is written to the DSH credentials service and the page never echoes the stored value; the status line indicates that the reference is known to hold a credential.
 3. Wait for the dynamic catalog to load, expand the card's model list, or find the models under `opencode-go-live` in the model picker. Select one to start a conversation; to use it as the default model, choose this route and model in the DSH default-model settings.
-4. To check for upstream catalog changes immediately, click **Refresh model list** next to the model count. A transient notice then reports how many models were added, updated, and removed (or that the list is already up to date); a failed refresh keeps the last successful catalog and reports the failure. While refreshing, the button reads **Refreshing…** and is disabled.
+4. Expanding the model list shows each model's monthly allowance for Go, Go Plus and Go Teams (for example `Go $15/mo · Plus $60/mo · Teams $20/mo`). This is an equivalent allowance, not an account balance; free models show `∞` and a tier the upstream omits shows a dash.
+5. To check for upstream catalog changes immediately, click **Refresh model list** next to the model count. A transient notice then reports how many models were added, updated, and removed (or that the list is already up to date); a failed refresh keeps the last successful catalog and reports the failure. While refreshing, the button reads **Refreshing…** and is disabled.
 
 The catalog comes from Models.dev and fetching it needs no API key; the key is resolved only when a request actually reaches the OpenCode Go API. If a selected model still cannot be called, use [Troubleshooting](#troubleshooting) below to separate credential errors from upstream responses.
 
 ![Saving the API key in the OpenCode Go (Live) card and choosing a live model in the model picker](img/add-key.gif)
 
 ![Clicking Refresh model list next to the model count; the transient notice reports the added, updated, and removed model counts](img/refresh.png)
+
+Expanded, the model list groups models by vendor — each group header shows the vendor and its model count, and every model carries a line with its monthly allowance for Go, Go Plus and Go Teams:
+
+![The model list grouped by vendor with per-model allowances for all three tiers; free models show ∞](img/model-list.png)
 
 ## Usage overlay
 
@@ -192,8 +197,10 @@ llm-opencode-go-live:
   catalog:
     cachePath: /absolute/path/to/opencode-go-live.json
     refreshOnStart: true
-    refreshIntervalMs: 21600000
+    refreshIntervalMs: 600000
     refreshTimeoutMs: 10000
+    refreshRetryMinMs: 60000
+    refreshRetryMaxMs: 600000
   showBalanceOverlay: true
 ```
 
@@ -202,8 +209,10 @@ llm-opencode-go-live:
 | `apiKeyEnv` | `OPENCODE_GO_LIVE_API_KEY` | Reference resolved by the DSH credentials service on every model call; independent of the reference the built-in `opencode-go` route uses. |
 | `catalog.cachePath` | `dshHomePath('cache', 'opencode-go-live.json')` | Absolute path; the bundle points it at `cache/opencode-go-live.json` under the Harness home (`~/.dsh/cache/opencode-go-live.json` by default, or under `$DSH_HOME`), which is how the catalog survives restarts. Only a hand-mounted plugin that leaves it unset keeps the catalog in memory. |
 | `catalog.refreshOnStart` | `true` | Refresh the catalog from Models.dev at startup. |
-| `catalog.refreshIntervalMs` | `21600000` | Interval for later refreshes in milliseconds; `0` disables scheduled refreshes. |
+| `catalog.refreshIntervalMs` | `600000` (10 minutes) | Interval for later refreshes in milliseconds; `0` disables scheduled refreshes. Lowering it raises the request rate against Models.dev proportionally. |
 | `catalog.refreshTimeoutMs` | `10000` | Timeout for a single catalog request in milliseconds; `0` disables the timeout. |
+| `catalog.refreshRetryMinMs` | `60000` | Wait before retrying after a failed refresh, in milliseconds; each consecutive failure doubles it. `0` retries immediately. |
+| `catalog.refreshRetryMaxMs` | `refreshIntervalMs` | Upper bound for that backoff, in milliseconds; defaults to the regular interval so a failure is never retried less often than the schedule. |
 | `showBalanceOverlay` | `true` | Whether the usage overlay is shown; the Models card switch reads and writes it, and the host runtime never consumes it. |
 
 The catalog fields belong to plugin config; the plugin's Models card edits the API key, toggles the usage overlay, and can refresh the model catalog on demand. A refresh first tries to restore the snapshot; a failed refresh retains the most recent successful catalog. The API key is never written to the catalog snapshot.

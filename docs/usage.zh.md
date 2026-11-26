@@ -6,7 +6,7 @@
 
 ## 准备与安装
 
-需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1 <0.2.0-0 || >=0.2.0-rc.1 <0.3.0-0 || >=0.2.1-alpha.1 <0.3.0-0 || >=0.2.2-0 <0.3.0-0`；每条范围都需要显式预发布分支，否则 harness 的预发布构建会被静默排除；宿主每开一条新的 patch 线都需要再补一条分支，其中 `>=0.2.2-0` 分支已为下一条线预留。不要把它们合并成 `>=0.2.0-0 <0.3.0-0`：单个 `0.2.0` 元组覆盖不到 `0.2.1-rc.2`，反而会把当前宿主排除在外。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；该范围同时覆盖 0.87.1 线和宿主实际提供的 1.x 构建（1.0.2、1.1.0）。插件保留 pi-ai `1.1.0` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
+需要 Node.js 22.19 及以上（pi-ai 声明的最低版本）、pnpm，以及 0.1.7-rc.1 及以上的 DeepSeek Harness Web profile。插件声明的 peer 依赖为 `@deepseek-ai/cordis` `~4.0.4 || ~4.0.5-alpha.1`，以及 `@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-llm-pi-ai`、`@deepseek-ai/dsh-settings` 的 `>=0.1.7-rc.1`；只声明下限。宿主用 `includePrerelease: true` 判定 peer，预发布与新开的 patch 线都自动落在范围内，无需再补分支；代价是没有上界也意味着未来的 `0.3.0` 或 `1.0.0` 会被放行，需要停留在 0.2 线时应固定插件版本。`@deepseek-ai/cordis` 保留上界。宿主还需提供 `@earendil-works/pi-ai` `^0.87.1 || ^1.0.0`；DSH 在运行时将该 peer 解析到宿主的 pi-ai，链接源码目录安装时也适用；该范围同时覆盖 0.87.1 线和宿主实际提供的 1.x 构建（1.0.2、1.1.0）。插件保留 pi-ai `1.1.0` 开发依赖，用于独立构建和测试。DSH 的 Web profile 必须能正常启动。
 
 ### 从 npm 安装
 
@@ -90,13 +90,18 @@ node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live
 1. 启动 Web profile，打开 **Settings → Models**，找到由插件提供的 **OpenCode Go (Live)** 卡片。
 2. 卡片默认只显示密钥状态和模型列表；点击“编辑”后在 **API Key** 输入框填写 OpenCode Go 密钥并应用，或点击“取消”放弃输入。密钥写入 DSH 凭据服务，页面不会回显已保存的值；状态提示表示已确认该引用有凭据。
 3. 等待动态目录加载，展开卡片的模型列表，或在模型选择器查看 `opencode-go-live` 下的模型。选择其中一个模型发起对话；需要作为默认模型时，在 DSH 的默认模型设置中选择该路由和模型。
-4. 需要立即核对上游目录变化时，点模型数量旁的“刷新模型列表”。刷新完成后会出现瞬态提示，给出新增、更新、移除的模型数量（没有变化时提示已是最新）；刷新失败会保留上次成功目录并提示失败。刷新进行中按钮显示“刷新中…”并置灰。
+4. 展开模型列表可以看到每个模型在 Go / Go Plus / Go Teams 三档下的月度额度（形如 `Go $15/月 · Plus $60/月 · Teams $20/月`）。这是等值额度不是账户余额；免费模型显示 `∞`，上游未提供的档位显示横杠。
+5. 需要立即核对上游目录变化时，点模型数量旁的“刷新模型列表”。刷新完成后会出现瞬态提示，给出新增、更新、移除的模型数量（没有变化时提示已是最新）；刷新失败会保留上次成功目录并提示失败。刷新进行中按钮显示“刷新中…”并置灰。
 
 模型目录来自 Models.dev，获取目录不需要 API Key；真正请求 OpenCode Go API 时才会解析密钥。选择模型后若仍无法调用，请按下方[排查](#排查)先区分凭据错误与上游响应。
 
 ![在 OpenCode Go (Live) 卡片中保存密钥并在模型选择器中选择 live 模型](img/add-key.gif)
 
 ![在模型数量旁点击「刷新模型列表」，完成后提示新增、更新、移除的模型数量](img/refresh.png)
+
+展开模型列表后，模型按厂商分组，组头是厂名与模型数量；每个模型下方一行显示它在 Go / Go Plus / Go Teams 三档下的月度等值额度：
+
+![模型列表按厂商分组，每行显示三档月度额度；免费模型显示 ∞](img/model-list.png)
 
 ## 用量悬浮窗
 
@@ -192,8 +197,10 @@ llm-opencode-go-live:
   catalog:
     cachePath: /absolute/path/to/opencode-go-live.json
     refreshOnStart: true
-    refreshIntervalMs: 21600000
+    refreshIntervalMs: 600000
     refreshTimeoutMs: 10000
+    refreshRetryMinMs: 60000
+    refreshRetryMaxMs: 600000
   showBalanceOverlay: true
 ```
 
@@ -202,8 +209,10 @@ llm-opencode-go-live:
 | `apiKeyEnv` | `OPENCODE_GO_LIVE_API_KEY` | 每次模型调用时由 DSH 凭据服务解析的引用；与内置 `opencode-go` 路由使用的引用相互独立。 |
 | `catalog.cachePath` | `dshHomePath('cache', 'opencode-go-live.json')` | 绝对路径；bundle 默认指向 Harness home 下的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下），目录由此跨重启恢复。只有手工挂载且不设置该字段时才仅保存在内存。 |
 | `catalog.refreshOnStart` | `true` | 启动时从 Models.dev 刷新目录。 |
-| `catalog.refreshIntervalMs` | `21600000` | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。 |
+| `catalog.refreshIntervalMs` | `600000`（10 分钟） | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。调低它会按比例增加对 Models.dev 的请求量。 |
 | `catalog.refreshTimeoutMs` | `10000` | 单次目录请求超时，单位毫秒；`0` 禁用超时。 |
+| `catalog.refreshRetryMinMs` | `60000` | 刷新失败后首次重试的等待，单位毫秒；每次连续失败翻倍。`0` 表示立即重试。 |
+| `catalog.refreshRetryMaxMs` | `refreshIntervalMs` | 该退避的等待上限，单位毫秒；默认等于常规间隔，避免失败后反而比定时刷新更少尝试。 |
 | `showBalanceOverlay` | `true` | 是否显示用量悬浮窗；由 Models 卡片内的开关读写，Host 运行时不读取该值。 |
 
 目录字段由插件配置管理，插件的 Models 卡片编辑 API Key、切换用量悬浮窗开关，并可主动刷新模型目录。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。

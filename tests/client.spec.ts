@@ -269,7 +269,9 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
   render()
   await settle()
   let tree = render()
-  assert.equal(find(tree, node => node.type === 'code' && node.children[0] === 'new-model')?.children[0], 'new-model')
+  // 模型行只显示人类可读名（id 不再渲染），因此按 name 断言。
+  assert.ok(find(tree, node => node.type === 'li' && node.children?.includes('New Model')),
+    '模型列表应显示 New Model')
   assert.equal(passwordInput(tree), undefined)
   find(tree, node => node.type === 'button' && node.children[0] === dictionary.edit)!.props.onClick()
   tree = render()
@@ -307,7 +309,8 @@ test('客户端卡片仅在点击编辑后允许修改密钥并显示动态模�
   listeners.get('settings/document-updated')![0]!('llm-opencode-go-live')
   await settle()
   tree = render()
-  assert.ok(find(tree, node => node.type === 'code' && node.children[0] === 'later-model'))
+  assert.ok(find(tree, node => node.type === 'li' && node.children?.includes('Later Model')),
+    '凭据引用变化后应刷新为 Later Model')
   tree = render()
   assert.equal(passwordInput(tree), undefined)
   assert.deepEqual(saved, [['OPENCODE_GO_LIVE_API_KEY', 'sk-test-live']])

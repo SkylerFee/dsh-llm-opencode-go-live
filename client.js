@@ -10,6 +10,8 @@ window.__ModuleLoader__.load({
     const BALANCE_ROUTE = '/api/opencode-go-live/balance'
     /** 与 src/index.ts 的 REFRESH_ROUTE_PATH 平行定义：主动刷新有副作用，走 POST。 */
     const REFRESH_ROUTE = '/api/opencode-go-live/refresh'
+    /** 与 src/index.ts 的 LIMITS_ROUTE_PATH 平行定义：套餐额度只读。 */
+    const LIMITS_ROUTE = '/api/opencode-go-live/limits'
     /** 瞬态提示的驻留时长；足够读完「新增/更新/移除」三个数字，又不至于挡住界面。 */
     const TOAST_DURATION_MS = 3200
     // 悬浮窗的纯界面偏好（位置、固定、尺寸）留在浏览器本地；是否展示由插件配置决定。
@@ -224,6 +226,9 @@ window.__ModuleLoader__.load({
         refreshModels: '刷新模型列表', refreshModelsBusy: '刷新中…',
         refreshResult: '模型列表已更新：新增 {a} 个，更新 {u} 个，移除 {r} 个',
         refreshUnchanged: '模型列表已是最新', refreshFailed: '刷新失败，已保留上次成功目录',
+        limGo: 'Go', limPlus: 'Plus', limTeams: 'Teams', limNone: '—', limMonthly: '/月',
+        limHint: '额度是该模型每月的等值用量刻度，不是账户余额；用满即为该档上限。',
+        vendorOther: '其他',
         showOverlay: '显示用量悬浮窗',
         overlayTitle: 'OpenCode Go 用量', closeOverlay: '关闭用量面板', refresh: '刷新',
         refreshing: '刷新中…',
@@ -247,6 +252,9 @@ window.__ModuleLoader__.load({
         refreshModels: 'Refresh model list', refreshModelsBusy: 'Refreshing…',
         refreshResult: 'Model list updated: {a} added, {u} updated, {r} removed',
         refreshUnchanged: 'The model list is already up to date', refreshFailed: 'Refresh failed; the last successful catalog is kept',
+        limGo: 'Go', limPlus: 'Plus', limTeams: 'Teams', limNone: '—', limMonthly: '/mo',
+        limHint: 'Allowances are each model\'s monthly equivalent-usage scale, not an account balance; using it up reaches that tier\'s cap.',
+        vendorOther: 'Other',
         showOverlay: 'Show usage overlay',
         overlayTitle: 'OpenCode Go usage', closeOverlay: 'Close usage panel', refresh: 'Refresh',
         refreshing: 'Refreshing…',
@@ -574,6 +582,89 @@ window.__ModuleLoader__.load({
       return false
     }
 
+    /** 校验额度响应包；结构不符按"没有额度"处理，界面显示横杠而不是报错。 */
+    function isLimitsEnvelope(value) {
+      return isRecord(value) && value.ok === true && isRecord(value.limits) && Array.isArray(value.plans)
+    }
+
+    /**
+     * 读取宿主缓存里的套餐额度。
+     *
+     * 额度是纯展示信息：任何失败都返回 null，调用方按"没有额度"渲染横杠，
+     * 不影响模型列表本身。
+     * @param signal - 可选的中止信号。
+     * @returns 额度响应包，或 null。
+     */
+    async function queryLimits(signal) {
+      try {
+        const response = await fetch(LIMITS_ROUTE, { signal, headers: { accept: 'application/json' } })
+        if (!response.ok) return null
+        const value = await response.json()
+        return isLimitsEnvelope(value) ? value : null
+      } catch {
+        return null
+      }
+    }
+
+    /**
+     * 按厂商把模型分组。
+     *
+     * 分组只影响展示：模型成员与顺序的权威仍是远端目录，这里仅按厂商聚拢，
+     * 组内保持目录原有顺序；缺少归属的模型统一归入「其他」并排在最后，
+     * 避免它们散落在各厂商之间。
+     * @param models - 目录里的模型，按原顺序。
+     * @param vendors - 模型 id 到厂商标识的映射。
+     * @param otherLabel - 「其他」分组的显示名。
+     * @returns 分组数组，每组含厂商键、显示名与模型列表。
+     */
+    function groupByVendor(models, vendors, otherLabel) {
+      const groups = new Map()
+      const other = { key: '__other__', label: otherLabel, models: [] }
+      for (const model of models) {
+        const vendor = vendors[model.id]
+        if (vendor === undefined) { other.models.push(model); continue }
+        const existing = groups.get(vendor)
+        if (existing === undefined) groups.set(vendor, { key: vendor, label: vendorLabel(vendor), models: [model] })
+        else existing.models.push(model)
+      }
+      const ordered = [...groups.values()].sort((a, b) =>
+        b.models.length - a.models.length || a.label.localeCompare(b.label, 'en'))
+      if (other.models.length > 0) ordered.push(other)
+      return ordered
+    }
+
+    /** 厂商标识到显示名；未收录代号首字母大写，保持与后端一致。 */
+    function vendorLabel(vendor) {
+      const known = { alibaba: 'Alibaba', anthropic: 'Anthropic', deepseek: 'DeepSeek', google: 'Google',
+        meituan: 'Meituan', meta: 'Meta', minimax: 'MiniMax', moonshotai: 'Moonshot', openai: 'OpenAI',
+        reflection: 'Reflection', stepfun: 'StepFun', tencent: 'Tencent', xai: 'xAI', xiaomi: 'Xiaomi',
+        zhipuai: 'Z.ai' }
+      const label = known[vendor]
+      if (label !== undefined) return label
+      return vendor.charAt(0).toUpperCase() + vendor.slice(1)
+    }
+
+    /**
+     * 把一个模型的额度渲染成「Go $15 · Plus $60 · Teams $20」。
+     *
+     * 每档独立降级：值为数字显示美元，为 null 表示不计量（免费模型）显示 ∞，
+     * 缺失显示横杠——这正好对应上游"该档未提供"的语义。
+     * @param limits - 该模型的额度映射。
+     * @param plans - 服务端给定的档位顺序。
+     * @param labels - 档位显示名。
+     * @param t - 本地化函数。
+     * @returns 供界面直接渲染的文本。
+     */
+    function formatLimits(limits, plans, labels, t) {
+      return plans.map(plan => {
+        const value = limits?.[plan]
+        const amount = value === null ? '∞'
+          : typeof value === 'number' ? `$${value}${t('limMonthly')}`
+            : t('limNone')
+        return `${labels[plan] ?? plan} ${amount}`
+      }).join(' · ')
+    }
+
     /**
      * 请求宿主主动刷新模型目录。
      *
@@ -701,6 +792,8 @@ window.__ModuleLoader__.load({
           const [refreshingModels, setRefreshingModels] = React.useState(false)
           /** 瞬态提示（toast）：{ text, tone }，显示后自动消失。 */
           const [toast, setToast] = React.useState(null)
+          /** 套餐额度与厂商归属：{ plans, limits, vendors }；为 null 时模型行显示横杠、不分组。 */
+          const [quota, setQuota] = React.useState(null)
 
           React.useEffect(() => {
             let active = true
@@ -716,6 +809,8 @@ window.__ModuleLoader__.load({
               }
             }
             void refresh()
+            // 额度与目录并行读取：kits 失败只影响那一列，不阻塞模型列表。
+            void queryLimits().then(next => { if (active) setQuota(next) }, () => { if (active) setQuota(null) })
             const disposers = [
               ctx.remote.$on('settings/document-updated', (ns) => { if (ns === NS) void refresh() }),
               ctx.remote.$on('credentials/reference-updated', () => { void refresh() }),
@@ -849,9 +944,26 @@ window.__ModuleLoader__.load({
                 h('summary', { style: { cursor: 'pointer', fontSize: 13 } }, `${view.models.length} ${t('models')}`),
                 view.models.length === 0
                   ? h('p', { style: { fontSize: 13 } }, t('empty'))
-                  : h('ul', { style: { maxHeight: 220, overflow: 'auto', paddingLeft: 20, fontSize: 13 } },
-                    view.models.map(model => h('li', { key: model.id },
-                      h('code', null, model.id), model.name && model.name !== model.id ? ` — ${model.name}` : null)))),
+                  : h('div', { style: { maxHeight: 320, overflow: 'auto', fontSize: 13 } },
+                    groupByVendor(view.models, quota?.vendors ?? {}, t('vendorOther'))
+                      .map(group => h('section', { key: group.key, style: { marginTop: 6 } },
+                        h('div', {
+                          style: { fontSize: 12, fontWeight: 500, color: 'var(--dsw-alias-label-secondary)', marginBottom: 2 },
+                        }, `${group.label} · ${group.models.length}`),
+                        h('ul', { style: { margin: 0, paddingLeft: 20 } },
+                          group.models.map(model => h('li', { key: model.id, style: { marginBottom: 2 } },
+                            // 只显示人类可读名：id 与 name 几乎总是同义。
+                            model.name,
+                            quota === null || quota.limits[model.id] === undefined
+                              ? null
+                              : h('div', {
+                                  style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' },
+                                }, formatLimits(quota.limits[model.id], quota.plans,
+                                  { go: t('limGo'), 'go-plus': t('limPlus'), 'go-teams': t('limTeams') }, t)))))))),
+                // 额度单位容易被读成账户余额，这里显式说明它是"等值用量刻度"。
+                quota === null ? null : h('p', {
+                  style: { margin: '4px 0 0', fontSize: 11, color: 'var(--dsw-alias-label-tertiary)' },
+                }, t('limHint'))),
               h('button', {
                 type: 'button', style: refreshStyle, disabled: refreshingModels,
                 title: t('refreshModels'), 'aria-label': t('refreshModels'),

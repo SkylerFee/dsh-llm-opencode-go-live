@@ -33,6 +33,8 @@ The plugin registers only the `opencode-go-live` route. The built-in DSH `openco
 | `src/transform.ts` | Validate source models and produce pi-ai models plus rejection diagnostics. |
 | `src/store.ts` | Read and write the in-memory or JSON catalog snapshot. |
 | `src/diff.ts` | Compare the previous and next catalogs to report added, updated, and removed models. |
+| `src/limits.ts` | Read per-model plan allowances from the official inference listing and publish them with the snapshot for display. |
+| `src/vendor.ts` | Derive each model's vendor from the `canonical_model_id` prefix for grouping in the UI. |
 | `src/provider.ts` | Reuse `PiAiAdapter` and the pi-ai OpenCode Go transport, passing the session id upstream. |
 | `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, the manual refresh route, and credential resolution. |
 | `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing, a manual catalog refresh with a transient result notice, and the model list in the Models slot. |
@@ -63,7 +65,7 @@ sequenceDiagram
     end
 ```
 
-At startup the snapshot in the configured path is restored first, then a network refresh is attempted; a first refresh failure is retried at most 4 more times, 15 seconds apart. Afterwards refreshes run on `refreshIntervalMs`; a value of `0` starts no timer. Concurrent refreshes share one request. On uninstall the scheduled job is cancelled and an in-flight refresh is aborted and awaited.
+At startup the snapshot in the configured path is restored first, then a network refresh is attempted; a first refresh failure is retried at most 4 more times, 15 seconds apart. Afterwards refreshes run on `refreshIntervalMs`; a value of `0` starts no timer. A failed refresh is retried sooner than the regular interval: the wait starts at `refreshRetryMinMs` (default 1 minute) and doubles on each consecutive failure up to `refreshRetryMaxMs` (default: the regular interval), and one success resets it to the regular interval. The schedule is re-armed after *every* refresh — startup, scheduled, or the manual refresh from the card — so the backoff applies whichever entry point failed. Concurrent refreshes share one request. On uninstall the scheduled job is cancelled and an in-flight refresh is aborted and awaited.
 
 Once a conversion has completed and been saved successfully, the runtime replaces the whole snapshot at once and then tells DSH to update the model list. Later model lookups and new requests use the new catalog; calls already prepared keep the model data from when they were prepared. A failed source fetch, conversion, or save retains the old snapshot. A legitimately empty catalog clears the models; if the source has entries but all of them are rejected for reasons other than deprecation, the old snapshot is retained.
 
@@ -80,6 +82,16 @@ A failed refresh keeps the previous catalog and reports the failure instead of s
 The Models.dev `opencode-go` catalog decides which models belong to the live route. Known models inherit the API protocol, endpoints, and compatibility parameters from the current pi-ai built-in model table; unknown models use the generic OpenAI Completions endpoint of OpenCode Go. The catalog never passes arbitrary source request headers or body fields upstream.
 
 Deprecated models, models without a valid context or output limit, without text input, or whose tool-calling capability cannot be established do not enter the catalog; rejected entries produce diagnostics. Known policies may supply limits or input types the source lacks, but an input range the source states explicitly is never widened. Model prices are zeroed in the snapshot and are not used for billing.
+
+Accepted models are additionally checked for protocol consistency: within one protocol the endpoints must agree, both among the models this refresh produced and with the pinned pi-ai policy table. Borrowed from how the OpenCode Console integration groups models by provider — one protocol per endpoint — the check reports a `POLICY_GROUP_MISMATCH` diagnostic instead of dropping models, because catalog membership belongs to the source: a policy table that lags behind must not make models disappear, but the divergence should be visible in diagnostics.
+
+## Plan allowances
+
+The model list shows each model's monthly allowance for all three official tiers (Go, Go Plus, Go Teams) side by side. The data comes from `go.monthly_usage` in `GET https://opencode.ai/inference/go/v1/models` — the same endpoint the official Limits table uses, and it needs no authentication. The figure is an equivalent allowance (how much API usage the model's monthly quota is worth), not an account balance, so the UI always renders it as `$n/mo` rather than a bare number.
+
+Allowances are a display-only enhancement, fully decoupled from model availability: if the fetch fails, a field is renamed, or the endpoint disappears, the refresh still publishes the catalog, the snapshot carries no `limits`, and the row shows a dash. `null` means the tier is unmetered (free models) and renders as `∞`; a missing tier also renders as a dash. Allowances update with the catalog refresh and never trigger a request of their own.
+
+The model list groups models by vendor. The vendor comes from the `canonical_model_id` prefix in models.dev (for example `moonshotai/kimi-k3`), with the internal code mapped to a readable name by `src/vendor.ts` (`moonshotai` → Moonshot, `zhipuai` → Z.ai). Grouping affects display only: the remote catalog remains the authority for which models exist and in what order, models keep catalog order inside a group, groups are ordered by model count, and models without a vendor fall into "Other" at the end. A model without `canonical_model_id` still enters the catalog, it just does not participate in grouping.
 
 ## Credentials and requests
 

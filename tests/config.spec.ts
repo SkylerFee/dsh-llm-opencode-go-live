@@ -86,3 +86,43 @@ test('npm 发布确认允许元数据延迟，重试耗尽仍失败', async () =
     assert.equal(result.stdout.split('\n').filter(line => line === 'sleep:10').length, sleeps)
   }
 })
+
+test('刷新退避：默认首重试 1 分钟、上限等于常规间隔', () => {
+  const config = resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF })
+  assert.equal(config.catalog.refreshRetryMinMs, 60_000)
+  assert.equal(config.catalog.refreshRetryMaxMs, config.catalog.refreshIntervalMs)
+})
+
+test('默认每 10 分钟轮询一次目录', () => {
+  const config = resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF })
+  assert.equal(config.catalog.refreshIntervalMs, 600_000)
+  // 上限跟随常规间隔，因此失败重试会在 1 分钟内起步、10 分钟封顶。
+  assert.equal(config.catalog.refreshRetryMaxMs, 600_000)
+})
+
+test('刷新退避：显式配置生效，且首个间隔不会超过上限', () => {
+  const configured = resolveConfig({
+    apiKeyEnv: LIVE_ROUTE_REF,
+    catalog: { refreshRetryMinMs: 1_000, refreshRetryMaxMs: 8_000 },
+  })
+  assert.equal(configured.catalog.refreshRetryMinMs, 1_000)
+  assert.equal(configured.catalog.refreshRetryMaxMs, 8_000)
+
+  // 下限大于上限时收敛到上限：否则“快速重试”会比直接等一轮还慢。
+  const inverted = resolveConfig({
+    apiKeyEnv: LIVE_ROUTE_REF,
+    catalog: { refreshRetryMinMs: 60_000, refreshRetryMaxMs: 5_000 },
+  })
+  assert.equal(inverted.catalog.refreshRetryMinMs, 5_000)
+  assert.equal(inverted.catalog.refreshRetryMaxMs, 5_000)
+})
+
+test('刷新退避：关闭定时刷新时上限回落到默认值，非法值被拒绝', () => {
+  const disabled = resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF, catalog: { refreshIntervalMs: 0 } })
+  assert.equal(disabled.catalog.refreshRetryMaxMs, 600_000)
+
+  assert.throws(
+    () => resolveConfig({ apiKeyEnv: LIVE_ROUTE_REF, catalog: { refreshRetryMinMs: -1 } }),
+    /refreshRetryMinMs must be a non-negative safe integer/,
+  )
+})

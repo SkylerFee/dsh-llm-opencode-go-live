@@ -8,6 +8,8 @@ import type { ResolvedConfig } from './config.js'
 import { createUsageSource } from './balance.js'
 import type { UsageEnvelope, UsageSource } from './balance.js'
 import { diffCatalogs } from './diff.js'
+import { createLimitsSource, LIMIT_PLANS } from './limits.js'
+import type { LimitTable, LimitsSource } from './limits.js'
 import { createDynamicAdapter, ROUTE_ID } from './provider.js'
 import { createModelsSource } from './source.js'
 import type { ModelsSource } from './source.js'
@@ -21,6 +23,9 @@ export { createUsageSource, OPENCODE_GO_USAGE_URL, parseUsageResponse } from './
 export type { UsageEnvelope, UsageErrorCode, UsageReport, UsageSource, UsageWindow } from './balance.js'
 export { diffCatalogs } from './diff.js'
 export type { CatalogDiff } from './diff.js'
+export { createLimitsSource, LIMIT_PLANS, OPENCODE_GO_LIMITS_URL, parseLimits } from './limits.js'
+export { OTHER_VENDOR, vendorCounts, vendorLabel, vendorOf } from './vendor.js'
+export type { LimitsSource, LimitPlan, LimitTable, ModelLimit } from './limits.js'
 export { OPEN_CODE_GO_POLICIES, policyFor } from './policy.js'
 export type { OpenCodeGoApi, OpenCodeGoPolicy } from './policy.js'
 export { createModelsSource } from './source.js'
@@ -41,6 +46,8 @@ const MAX_STARTUP_RETRIES = 4
 export const BALANCE_ROUTE_PATH = '/api/opencode-go-live/balance'
 /** 浏览器可访问的主动刷新路由；client.js 以平行常量引用同一路径。 */
 export const REFRESH_ROUTE_PATH = '/api/opencode-go-live/refresh'
+/** 浏览器可访问的套餐额度路由；client.js 以平行常量引用同一路径。 */
+export const LIMITS_ROUTE_PATH = '/api/opencode-go-live/limits'
 const USAGE_TIMEOUT_MS = 10_000
 
 /**
@@ -67,6 +74,8 @@ interface ContextWithConnection extends Context {
 interface RuntimeOptions {
   config: ResolvedConfig
   source: ModelsSource
+  /** 额度来源；省略或解析失败时快照不带额度，界面少一列而模型照常可用。 */
+  limits?: LimitsSource
   store: CatalogStore
   logger: Pick<Context['logger'], 'info' | 'warn' | 'error'>
   onCatalogUpdated?: () => void
@@ -78,6 +87,8 @@ export class OpenCodeGoLiveRuntime {
   private refreshPromise: Promise<CatalogSnapshot | undefined> | undefined
   private startupPromise: Promise<void> | undefined
   private refreshTimer: NodeJS.Timeout | undefined
+  /** 连续失败次数；一次成功即归零，用于计算退避等待。 */
+  private consecutiveFailures = 0
   private activeRefresh: AbortController | undefined
   private readonly lifetime = new AbortController()
   private disposed = false
@@ -108,11 +119,82 @@ export class OpenCodeGoLiveRuntime {
       }
     }
     if (this.disposed) return
-    const interval = this.options.config.catalog.refreshIntervalMs
-    if (interval > 0 && this.refreshTimer === undefined) {
-      this.refreshTimer = setInterval(() => { void this.refresh() }, interval)
-      this.refreshTimer.unref?.()
+    this.scheduleNext()
+  }
+
+  /**
+   * 安排下一次刷新。
+   *
+   * 成功时按 `refreshIntervalMs` 匀速轮询；失败时按 `refreshRetryMinMs` 起步、
+   * 每次翻倍递增到 `refreshRetryMaxMs` 封顶。这样一次瞬时故障（上游 5xx、
+   * 网络抖动）不必等到下一个完整间隔——默认 10 分钟——才重试，而持续故障也不会
+   * 变成对上游的高频轮询。
+   *
+   * 不用 `setInterval` 是因为间隔要随结果变化；`unref` 保证不拖住宿主退出。
+   */
+  private scheduleNext(): void {
+    if (this.refreshTimer !== undefined) {
+      clearTimeout(this.refreshTimer)
+      this.refreshTimer = undefined
     }
+    const interval = this.options.config.catalog.refreshIntervalMs
+    if (this.disposed || interval === 0) return
+    const wait = this.consecutiveFailures === 0 ? interval : this.retryDelayMs()
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined
+      void this.refresh()
+    }, wait)
+    this.refreshTimer.unref?.()
+  }
+
+  /**
+   * 每次刷新结束后重新排程。
+   *
+   * 排程必须挂在「任何一次刷新完成」而不是「定时器回调完成」上：启动刷新、
+   * 定时刷新和卡片上的主动刷新都可能失败，只有统一在 `refresh()` 之后重排，
+   * 退避才会对所有这些入口生效（否则主动刷新失败后仍会傻等常规间隔）。
+   */
+  private rescheduleIfIdle(): void {
+    if (this.disposed) return
+    this.scheduleNext()
+  }
+
+  /**
+   * 抓取套餐额度；任何失败都只记警告并返回 undefined。
+   *
+   * 额度是纯展示增强，不能影响模型目录：端点改版、字段消失或网络故障时，
+   * 刷新照常发布模型，只是界面上少一列。这也保证了「模型可用」不依赖一个
+   * 未文档化的第三方端点。
+   * @param signal - 与目录抓取共享的超时信号。
+   * @returns 模型 id 到额度的映射；失败或未配置来源时为 undefined。
+   */
+  private async fetchLimitsSafely(signal: AbortSignal): Promise<LimitTable | undefined> {
+    if (this.options.limits === undefined) return undefined
+    try {
+      const table = await this.options.limits.fetchLimits(signal)
+      return Object.keys(table).length === 0 ? undefined : table
+    } catch (error) {
+      if (!this.disposed) {
+        this.options.logger.warn(
+          `llm-opencode-go-live: plan limits unavailable; models stay usable without them (${String(error)})`,
+        )
+      }
+      return undefined
+    }
+  }
+
+  /**
+   * 计算下一次失败重试的等待时间：从 `refreshRetryMinMs` 起按失败次数翻倍。
+   *
+   * 使用位运算之前先夹住指数，避免失败次数很大时 `2 ** n` 溢出成 Infinity
+   * 后与上限取最小值的结果失去意义。
+   * @returns 夹在 `[refreshRetryMinMs, refreshRetryMaxMs]` 内的等待毫秒数。
+   */
+  private retryDelayMs(): number {
+    const { refreshRetryMinMs, refreshRetryMaxMs } = this.options.config.catalog
+    if (refreshRetryMinMs <= 0 || refreshRetryMaxMs <= 0) return Math.max(0, refreshRetryMaxMs)
+    const exponent = Math.min(this.consecutiveFailures - 1, 30)
+    return Math.min(refreshRetryMinMs * 2 ** exponent, refreshRetryMaxMs)
   }
 
   /** 获取当前目录快照。 */
@@ -122,12 +204,18 @@ export class OpenCodeGoLiveRuntime {
 
   /**
    * 刷新来源并在完整转换成功后发布。
+   *
+   * 无论成功还是失败，结束时都会按最新结果重排下一次定时刷新：成功回到常规间隔，
+   * 失败按退避提前重试。这样启动刷新、定时刷新和卡片上的主动刷新共享同一套节奏。
    * @returns 成功快照；失败时保留旧快照并返回 undefined。
    */
   async refresh(): Promise<CatalogSnapshot | undefined> {
     if (this.disposed) return undefined
     if (this.refreshPromise !== undefined) return this.refreshPromise
-    this.refreshPromise = this.refreshOnce().finally(() => { this.refreshPromise = undefined })
+    this.refreshPromise = this.refreshOnce().finally(() => {
+      this.refreshPromise = undefined
+      this.rescheduleIfIdle()
+    })
     return this.refreshPromise
   }
 
@@ -137,7 +225,7 @@ export class OpenCodeGoLiveRuntime {
     this.lifetime.abort()
     this.activeRefresh?.abort()
     if (this.refreshTimer !== undefined) {
-      clearInterval(this.refreshTimer)
+      clearTimeout(this.refreshTimer)
       this.refreshTimer = undefined
     }
     await this.startupPromise?.catch(() => undefined)
@@ -152,6 +240,8 @@ export class OpenCodeGoLiveRuntime {
     try {
       const source = await this.options.source.fetchProvider(controller.signal)
       if (this.disposed) return undefined
+      const limits = await this.fetchLimitsSafely(controller.signal)
+      if (this.disposed) return undefined
       const result = transformProvider(source)
       if (result.models.length === 0 && result.diagnostics.some(item => item.code !== 'DEPRECATED_MODEL')) {
         throw new Error('llm-opencode-go-live: source produced no valid models')
@@ -161,16 +251,24 @@ export class OpenCodeGoLiveRuntime {
         checkedAt: new Date().toISOString(),
         models: result.models,
         diagnostics: result.diagnostics,
+        ...(limits === undefined ? {} : { limits }),
+        ...(Object.keys(result.vendors).length === 0 ? {} : { vendors: result.vendors }),
       }
       await this.options.store.save(snapshot)
       if (this.disposed) return undefined
       this.snapshot = snapshot
+      this.consecutiveFailures = 0
       this.options.onCatalogUpdated?.()
       this.options.logger.info(`llm-opencode-go-live: refreshed ${result.models.length} models`)
       return snapshot
     } catch (error) {
       if (!this.disposed) {
-        this.options.logger.warn(`llm-opencode-go-live: refresh failed; keeping the last successful snapshot (${String(error)})`)
+        // 连续失败计数驱动退避：下一次重试会比常规间隔更快，但每次翻倍直到上限。
+        this.consecutiveFailures += 1
+        this.options.logger.warn(
+          `llm-opencode-go-live: refresh failed (${this.consecutiveFailures} in a row); ` +
+          `keeping the last successful snapshot, next attempt in ${this.retryDelayMs()}ms (${String(error)})`,
+        )
       }
       return undefined
     } finally {
@@ -268,6 +366,28 @@ export async function refreshRoute(runtime: OpenCodeGoLiveRuntime): Promise<Resp
 }
 
 /**
+ * 套餐额度路由处理器。
+ *
+ * 额度是快照里的附带信息，因此这里只读当前快照、不触发任何网络访问：模型目录
+ * 刷新时顺带更新额度，界面按需读取。认证由 `/api` 桥在到达本处理器之前完成，
+ * 与余额路由一致。
+ * @param runtime - 目录运行时。
+ * @returns JSON 响应：`{ ok: true, checkedAt, plans, limits }`。
+ */
+async function limitsRoute(runtime: OpenCodeGoLiveRuntime): Promise<Response> {
+  const snapshot = runtime.getSnapshot()
+  return new Response(JSON.stringify({
+    ok: true,
+    checkedAt: snapshot?.checkedAt ?? null,
+    // 档位顺序由服务端确定，避免客户端各自排序导致三档错位。
+    plans: [...LIMIT_PLANS],
+    limits: snapshot?.limits ?? {},
+    // 厂商同属展示数据，合并进同一个只读响应，避免再多一次往返。
+    vendors: snapshot?.vendors ?? {},
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+/**
  * Cordis 插件入口。插件直接注册 Harness 原生 LLM 适配器。
  * @param ctx - Cordis 上下文。
  * @param config - 插件配置。
@@ -282,6 +402,7 @@ export function apply(
   const runtime = new OpenCodeGoLiveRuntime({
     config: resolvedConfig,
     source: createModelsSource(),
+    limits: createLimitsSource(),
     store: resolvedConfig.catalog.cachePath === undefined
       ? new MemoryCatalogStore()
       : new JsonCatalogStore(resolvedConfig.catalog.cachePath),
@@ -321,6 +442,12 @@ export function apply(
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: () => refreshRoute(runtime),
+    }))
+    child.effect(() => connection.fetch.register({
+      path: LIMITS_ROUTE_PATH,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: () => limitsRoute(runtime),
     }))
   })
   void runtime.start().catch(error => {
