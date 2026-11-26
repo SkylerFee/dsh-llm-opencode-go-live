@@ -139,3 +139,22 @@ test('卸载中止进行中的刷新且不发布卸载后的目录', async () =>
   assert.equal(runtime.getSnapshot(), undefined)
   assert.equal(await runtime.refresh(), undefined)
 })
+
+test('协议分组自洽时不产生分组诊断', () => {
+  const result = transformProvider({
+    models: {
+      'gpt-5.6-luna': { tool_call: true, limit: { context: 100, output: 10 } },
+      'minimax-m3': { tool_call: true, limit: { context: 100, output: 10 } },
+      'unknown-model': { tool_call: true, limit: { context: 100, output: 10 } },
+    },
+  })
+  assert.deepEqual(result.diagnostics, [])
+  // 同一协议只应落到一个端点，否则说明策略表把同组模型拆到了不同上游。
+  const perApi = new Map<string, Set<string>>()
+  for (const model of result.models) {
+    const set = perApi.get(model.api) ?? new Set<string>()
+    set.add(model.baseUrl)
+    perApi.set(model.api, set)
+  }
+  for (const [api, urls] of perApi) assert.equal(urls.size, 1, `${api} 不应有多个端点`)
+})

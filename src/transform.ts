@@ -1,11 +1,13 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
-import { apiOf, policyFor } from './policy.js'
+import { apiOf, isPolicyConsistent, policyFor } from './policy.js'
+import type { OpenCodeGoApi } from './policy.js'
 import type { SourceModel, SourceProvider } from './source.js'
 
 /** 单条目录诊断。 */
 export interface CatalogDiagnostic {
   modelId?: string
   code: 'INVALID_SOURCE' | 'DEPRECATED_MODEL' | 'INVALID_LIMIT' | 'UNSUPPORTED_INPUT' | 'MISSING_TOOL_CALL'
+    | 'POLICY_GROUP_MISMATCH'
   message: string
 }
 
@@ -88,7 +90,47 @@ export function transformProvider(provider: SourceProvider): TransformResult {
       maxTokens,
     })
   }
+  diagnostics.push(...policyGroupDiagnostics(models))
   return { models, diagnostics }
+}
+
+/**
+ * 校验已接受模型的「协议 + 端点」组合是否自洽。
+ *
+ * 借鉴官方 Console 集成按 provider 分组处理的做法：同一个 provider 下，一个协议
+ * 应只对应一个端点；出现分叉时说明 pi-ai 静态策略表与来源目录已经错位，同一组模型
+ * 会被发往不同端点。这里产出诊断而不是丢模型——目录成员资格由来源决定，策略表
+ * 抖动不应该让用户突然失去模型，但需要在诊断里看见它。
+ * @param models - 本次通过校验的模型。
+ * @returns 分组歧义诊断；组合一致时为空数组。
+ */
+function policyGroupDiagnostics(models: readonly Model<Api>[]): CatalogDiagnostic[] {
+  const endpoints = new Map<OpenCodeGoApi, Set<string>>()
+  for (const model of models) {
+    const api = model.api as OpenCodeGoApi
+    const set = endpoints.get(api) ?? new Set<string>()
+    set.add(model.baseUrl)
+    endpoints.set(api, set)
+  }
+  const diagnostics: CatalogDiagnostic[] = []
+  for (const [api, urls] of endpoints) {
+    // 单个协议出现多个端点：同组模型会在不同端点间分裂。
+    if (urls.size > 1) {
+      diagnostics.push({
+        code: 'POLICY_GROUP_MISMATCH',
+        message: `protocol ${api} maps to ${urls.size} endpoints: ${[...urls].join(', ')}`,
+      })
+      continue
+    }
+    const [baseUrl] = urls
+    if (baseUrl !== undefined && !isPolicyConsistent(api, baseUrl)) {
+      diagnostics.push({
+        code: 'POLICY_GROUP_MISMATCH',
+        message: `protocol ${api} points at ${baseUrl}, which the pinned pi-ai policy table does not use for it`,
+      })
+    }
+  }
+  return diagnostics
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
