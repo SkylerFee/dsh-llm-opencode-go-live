@@ -78,6 +78,8 @@ export class OpenCodeGoLiveRuntime {
   private refreshPromise: Promise<CatalogSnapshot | undefined> | undefined
   private startupPromise: Promise<void> | undefined
   private refreshTimer: NodeJS.Timeout | undefined
+  /** 连续失败次数；一次成功即归零，用于计算退避等待。 */
+  private consecutiveFailures = 0
   private activeRefresh: AbortController | undefined
   private readonly lifetime = new AbortController()
   private disposed = false
@@ -108,11 +110,58 @@ export class OpenCodeGoLiveRuntime {
       }
     }
     if (this.disposed) return
-    const interval = this.options.config.catalog.refreshIntervalMs
-    if (interval > 0 && this.refreshTimer === undefined) {
-      this.refreshTimer = setInterval(() => { void this.refresh() }, interval)
-      this.refreshTimer.unref?.()
+    this.scheduleNext()
+  }
+
+  /**
+   * 安排下一次刷新。
+   *
+   * 成功时按 `refreshIntervalMs` 匀速轮询；失败时按 `refreshRetryMinMs` 起步、
+   * 每次翻倍递增到 `refreshRetryMaxMs` 封顶。这样一次瞬时故障（上游 5xx、
+   * 网络抖动）不必等到下一个完整间隔——默认 10 分钟——才重试，而持续故障也不会
+   * 变成对上游的高频轮询。
+   *
+   * 不用 `setInterval` 是因为间隔要随结果变化；`unref` 保证不拖住宿主退出。
+   */
+  private scheduleNext(): void {
+    if (this.refreshTimer !== undefined) {
+      clearTimeout(this.refreshTimer)
+      this.refreshTimer = undefined
     }
+    const interval = this.options.config.catalog.refreshIntervalMs
+    if (this.disposed || interval === 0) return
+    const wait = this.consecutiveFailures === 0 ? interval : this.retryDelayMs()
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined
+      void this.refresh()
+    }, wait)
+    this.refreshTimer.unref?.()
+  }
+
+  /**
+   * 每次刷新结束后重新排程。
+   *
+   * 排程必须挂在「任何一次刷新完成」而不是「定时器回调完成」上：启动刷新、
+   * 定时刷新和卡片上的主动刷新都可能失败，只有统一在 `refresh()` 之后重排，
+   * 退避才会对所有这些入口生效（否则主动刷新失败后仍会傻等常规间隔）。
+   */
+  private rescheduleIfIdle(): void {
+    if (this.disposed) return
+    this.scheduleNext()
+  }
+
+  /**
+   * 计算下一次失败重试的等待时间：从 `refreshRetryMinMs` 起按失败次数翻倍。
+   *
+   * 使用位运算之前先夹住指数，避免失败次数很大时 `2 ** n` 溢出成 Infinity
+   * 后与上限取最小值的结果失去意义。
+   * @returns 夹在 `[refreshRetryMinMs, refreshRetryMaxMs]` 内的等待毫秒数。
+   */
+  private retryDelayMs(): number {
+    const { refreshRetryMinMs, refreshRetryMaxMs } = this.options.config.catalog
+    if (refreshRetryMinMs <= 0 || refreshRetryMaxMs <= 0) return Math.max(0, refreshRetryMaxMs)
+    const exponent = Math.min(this.consecutiveFailures - 1, 30)
+    return Math.min(refreshRetryMinMs * 2 ** exponent, refreshRetryMaxMs)
   }
 
   /** 获取当前目录快照。 */
@@ -122,12 +171,18 @@ export class OpenCodeGoLiveRuntime {
 
   /**
    * 刷新来源并在完整转换成功后发布。
+   *
+   * 无论成功还是失败，结束时都会按最新结果重排下一次定时刷新：成功回到常规间隔，
+   * 失败按退避提前重试。这样启动刷新、定时刷新和卡片上的主动刷新共享同一套节奏。
    * @returns 成功快照；失败时保留旧快照并返回 undefined。
    */
   async refresh(): Promise<CatalogSnapshot | undefined> {
     if (this.disposed) return undefined
     if (this.refreshPromise !== undefined) return this.refreshPromise
-    this.refreshPromise = this.refreshOnce().finally(() => { this.refreshPromise = undefined })
+    this.refreshPromise = this.refreshOnce().finally(() => {
+      this.refreshPromise = undefined
+      this.rescheduleIfIdle()
+    })
     return this.refreshPromise
   }
 
@@ -137,7 +192,7 @@ export class OpenCodeGoLiveRuntime {
     this.lifetime.abort()
     this.activeRefresh?.abort()
     if (this.refreshTimer !== undefined) {
-      clearInterval(this.refreshTimer)
+      clearTimeout(this.refreshTimer)
       this.refreshTimer = undefined
     }
     await this.startupPromise?.catch(() => undefined)
@@ -165,12 +220,18 @@ export class OpenCodeGoLiveRuntime {
       await this.options.store.save(snapshot)
       if (this.disposed) return undefined
       this.snapshot = snapshot
+      this.consecutiveFailures = 0
       this.options.onCatalogUpdated?.()
       this.options.logger.info(`llm-opencode-go-live: refreshed ${result.models.length} models`)
       return snapshot
     } catch (error) {
       if (!this.disposed) {
-        this.options.logger.warn(`llm-opencode-go-live: refresh failed; keeping the last successful snapshot (${String(error)})`)
+        // 连续失败计数驱动退避：下一次重试会比常规间隔更快，但每次翻倍直到上限。
+        this.consecutiveFailures += 1
+        this.options.logger.warn(
+          `llm-opencode-go-live: refresh failed (${this.consecutiveFailures} in a row); ` +
+          `keeping the last successful snapshot, next attempt in ${this.retryDelayMs()}ms (${String(error)})`,
+        )
       }
       return undefined
     } finally {

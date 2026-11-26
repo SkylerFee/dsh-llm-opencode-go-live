@@ -63,7 +63,7 @@ sequenceDiagram
     end
 ```
 
-At startup the snapshot in the configured path is restored first, then a network refresh is attempted; a first refresh failure is retried at most 4 more times, 15 seconds apart. Afterwards refreshes run on `refreshIntervalMs`; a value of `0` starts no timer. Concurrent refreshes share one request. On uninstall the scheduled job is cancelled and an in-flight refresh is aborted and awaited.
+At startup the snapshot in the configured path is restored first, then a network refresh is attempted; a first refresh failure is retried at most 4 more times, 15 seconds apart. Afterwards refreshes run on `refreshIntervalMs`; a value of `0` starts no timer. A failed refresh is retried sooner than the regular interval: the wait starts at `refreshRetryMinMs` (default 1 minute) and doubles on each consecutive failure up to `refreshRetryMaxMs` (default: the regular interval), and one success resets it to the regular interval. The schedule is re-armed after *every* refresh — startup, scheduled, or the manual refresh from the card — so the backoff applies whichever entry point failed. Concurrent refreshes share one request. On uninstall the scheduled job is cancelled and an in-flight refresh is aborted and awaited.
 
 Once a conversion has completed and been saved successfully, the runtime replaces the whole snapshot at once and then tells DSH to update the model list. Later model lookups and new requests use the new catalog; calls already prepared keep the model data from when they were prepared. A failed source fetch, conversion, or save retains the old snapshot. A legitimately empty catalog clears the models; if the source has entries but all of them are rejected for reasons other than deprecation, the old snapshot is retained.
 
@@ -80,6 +80,8 @@ A failed refresh keeps the previous catalog and reports the failure instead of s
 The Models.dev `opencode-go` catalog decides which models belong to the live route. Known models inherit the API protocol, endpoints, and compatibility parameters from the current pi-ai built-in model table; unknown models use the generic OpenAI Completions endpoint of OpenCode Go. The catalog never passes arbitrary source request headers or body fields upstream.
 
 Deprecated models, models without a valid context or output limit, without text input, or whose tool-calling capability cannot be established do not enter the catalog; rejected entries produce diagnostics. Known policies may supply limits or input types the source lacks, but an input range the source states explicitly is never widened. Model prices are zeroed in the snapshot and are not used for billing.
+
+Accepted models are additionally checked for protocol consistency: within one protocol the endpoints must agree, both among the models this refresh produced and with the pinned pi-ai policy table. Borrowed from how the OpenCode Console integration groups models by provider — one protocol per endpoint — the check reports a `POLICY_GROUP_MISMATCH` diagnostic instead of dropping models, because catalog membership belongs to the source: a policy table that lags behind must not make models disappear, but the divergence should be visible in diagnostics.
 
 ## Credentials and requests
 

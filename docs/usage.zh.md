@@ -192,8 +192,10 @@ llm-opencode-go-live:
   catalog:
     cachePath: /absolute/path/to/opencode-go-live.json
     refreshOnStart: true
-    refreshIntervalMs: 21600000
+    refreshIntervalMs: 600000
     refreshTimeoutMs: 10000
+    refreshRetryMinMs: 60000
+    refreshRetryMaxMs: 600000
   showBalanceOverlay: true
 ```
 
@@ -202,8 +204,10 @@ llm-opencode-go-live:
 | `apiKeyEnv` | `OPENCODE_GO_LIVE_API_KEY` | 每次模型调用时由 DSH 凭据服务解析的引用；与内置 `opencode-go` 路由使用的引用相互独立。 |
 | `catalog.cachePath` | `dshHomePath('cache', 'opencode-go-live.json')` | 绝对路径；bundle 默认指向 Harness home 下的 `cache/opencode-go-live.json`（默认即 `~/.dsh/cache/opencode-go-live.json`，设置 `$DSH_HOME` 时位于其下），目录由此跨重启恢复。只有手工挂载且不设置该字段时才仅保存在内存。 |
 | `catalog.refreshOnStart` | `true` | 启动时从 Models.dev 刷新目录。 |
-| `catalog.refreshIntervalMs` | `21600000` | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。 |
+| `catalog.refreshIntervalMs` | `600000`（10 分钟） | 后续刷新间隔，单位毫秒；`0` 禁用定时刷新。调低它会按比例增加对 Models.dev 的请求量。 |
 | `catalog.refreshTimeoutMs` | `10000` | 单次目录请求超时，单位毫秒；`0` 禁用超时。 |
+| `catalog.refreshRetryMinMs` | `60000` | 刷新失败后首次重试的等待，单位毫秒；每次连续失败翻倍。`0` 表示立即重试。 |
+| `catalog.refreshRetryMaxMs` | `refreshIntervalMs` | 该退避的等待上限，单位毫秒；默认等于常规间隔，避免失败后反而比定时刷新更少尝试。 |
 | `showBalanceOverlay` | `true` | 是否显示用量悬浮窗；由 Models 卡片内的开关读写，Host 运行时不读取该值。 |
 
 目录字段由插件配置管理，插件的 Models 卡片编辑 API Key、切换用量悬浮窗开关，并可主动刷新模型目录。刷新开始前会尝试恢复快照；刷新失败保留最近一次成功目录。API Key 不会写入目录快照。

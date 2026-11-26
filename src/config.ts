@@ -29,6 +29,8 @@ export const Config = z.object({
     refreshOnStart: z.boolean(),
     refreshIntervalMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
     refreshTimeoutMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
+    refreshRetryMaxMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
+    refreshRetryMinMs: z.number().step(1).min(0).max(Number.MAX_SAFE_INTEGER),
   }),
   showBalanceOverlay: z.boolean().default(true).volatile(),
 })
@@ -47,6 +49,16 @@ export interface CatalogConfig {
   refreshIntervalMs?: number
   /** 单次来源访问超时。 */
   refreshTimeoutMs?: number
+  /**
+   * 刷新失败后首次重试的等待时间；成功一次后回到 `refreshIntervalMs`。
+   * 零表示失败后只等常规间隔，不做快速重试。
+   */
+  refreshRetryMinMs?: number
+  /**
+   * 失败重试的等待上限；每次失败按倍递增直到触顶。
+   * 默认等于常规间隔，因此不会比"等下一轮"更慢。
+   */
+  refreshRetryMaxMs?: number
 }
 
 /** 已解析的不可变配置。 */
@@ -57,6 +69,8 @@ export interface ResolvedConfig {
     refreshOnStart: boolean
     refreshIntervalMs: number
     refreshTimeoutMs: number
+    refreshRetryMinMs: number
+    refreshRetryMaxMs: number
   }
   /** 余额悬浮面板的展示意图；客户端读取，Host 不消费。 */
   showBalanceOverlay: boolean
@@ -64,8 +78,10 @@ export interface ResolvedConfig {
 
 const DEFAULTS: ResolvedConfig['catalog'] = {
   refreshOnStart: true,
-  refreshIntervalMs: 21_600_000,
+  refreshIntervalMs: 600_000,
   refreshTimeoutMs: 10_000,
+  refreshRetryMinMs: 60_000,
+  refreshRetryMaxMs: 600_000,
 }
 
 const DEFAULT_SHOW_BALANCE_OVERLAY = true
@@ -99,6 +115,18 @@ export function resolveConfig(input: unknown): ResolvedConfig {
   if (typeof refreshOnStart !== 'boolean') {
     throw new TypeError('llm-opencode-go-live: catalog.refreshOnStart must be boolean')
   }
+  const refreshIntervalMs = catalog.refreshIntervalMs === undefined
+    ? DEFAULTS.refreshIntervalMs
+    : nonNegativeSafeInteger(catalog.refreshIntervalMs, 'catalog.refreshIntervalMs')
+  // 默认上限等于常规间隔：失败后的快速重试绝不会比"等下一轮"更慢。
+  const refreshRetryMaxMs = catalog.refreshRetryMaxMs === undefined
+    ? (refreshIntervalMs > 0 ? refreshIntervalMs : DEFAULTS.refreshRetryMaxMs)
+    : nonNegativeSafeInteger(catalog.refreshRetryMaxMs, 'catalog.refreshRetryMaxMs')
+  const requestedRetryMinMs = catalog.refreshRetryMinMs === undefined
+    ? DEFAULTS.refreshRetryMinMs
+    : nonNegativeSafeInteger(catalog.refreshRetryMinMs, 'catalog.refreshRetryMinMs')
+  // 退避区间必须收窄：首次重试晚于上限时，倍增至上限会让"快速重试"比直接等一轮还慢。
+  const refreshRetryMinMs = Math.min(requestedRetryMinMs, refreshRetryMaxMs)
   const showBalanceOverlay = input.showBalanceOverlay === undefined
     ? DEFAULT_SHOW_BALANCE_OVERLAY
     : input.showBalanceOverlay
@@ -110,12 +138,12 @@ export function resolveConfig(input: unknown): ResolvedConfig {
     catalog: {
       ...(catalog.cachePath === undefined ? {} : { cachePath: catalog.cachePath }),
       refreshOnStart,
-      refreshIntervalMs: catalog.refreshIntervalMs === undefined
-        ? DEFAULTS.refreshIntervalMs
-        : nonNegativeSafeInteger(catalog.refreshIntervalMs, 'catalog.refreshIntervalMs'),
+      refreshIntervalMs,
       refreshTimeoutMs: catalog.refreshTimeoutMs === undefined
         ? DEFAULTS.refreshTimeoutMs
         : nonNegativeSafeInteger(catalog.refreshTimeoutMs, 'catalog.refreshTimeoutMs'),
+      refreshRetryMinMs,
+      refreshRetryMaxMs,
     },
     showBalanceOverlay,
   }
