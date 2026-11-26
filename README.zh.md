@@ -44,6 +44,10 @@ dsh plugin --profile web add @skylerfee/dsh-llm-opencode-go-live
 
 ![在 OpenCode Go (Live) 卡片中点击「刷新模型列表」](docs/img/refresh.png)
 
+模型列表按厂商分组，每个模型显示 Go / Go Plus / Go Teams 三档月度等值额度；免费模型显示 `∞`：
+
+![模型列表按厂商分组并显示三档月度额度](docs/img/model-list.png)
+
 ## 文档
 
 - [使用指南](docs/usage.zh.md)：安装、密钥配置、配置字段与故障排查。

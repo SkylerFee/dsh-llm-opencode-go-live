@@ -44,6 +44,10 @@ Refreshing the catalog on demand — click **Refresh model list** next to the mo
 
 ![Clicking Refresh model list in the OpenCode Go (Live) card](docs/img/refresh.png)
 
+The model list is grouped by vendor and shows each model's monthly allowance for Go, Go Plus and Go Teams; free models show `∞`:
+
+![The model list grouped by vendor with per-model monthly allowances](docs/img/model-list.png)
+
 ## Documentation
 
 - [Usage guide](docs/usage.md): installation, key setup, configuration, and troubleshooting.

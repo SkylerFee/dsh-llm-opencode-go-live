@@ -99,6 +99,10 @@ node "$DSH_CLI" plugin --profile desktop add @skylerfee/dsh-llm-opencode-go-live
 
 ![在模型数量旁点击「刷新模型列表」，完成后提示新增、更新、移除的模型数量](img/refresh.png)
 
+展开模型列表后，模型按厂商分组，组头是厂名与模型数量；每个模型下方一行显示它在 Go / Go Plus / Go Teams 三档下的月度等值额度：
+
+![模型列表按厂商分组，每行显示三档月度额度；免费模型显示 ∞](img/model-list.png)
+
 ## 用量悬浮窗
 
 卡片中的**显示用量悬浮窗**开关控制右下角的用量控件。该开关写入插件配置 `showBalanceOverlay`，**未配置时的默认值是开启**，因此新装即显示，重启 profile 后保持。若宿主读取不到该字段（例如尚未写入过配置），同样按开启处理。
