@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Api, Model } from '@earendil-works/pi-ai'
+import type { LimitTable } from './limits.js'
 import { policyFor } from './policy.js'
 import type { CatalogDiagnostic } from './transform.js'
 
@@ -10,6 +11,13 @@ export interface CatalogSnapshot {
   checkedAt: string
   models: readonly Model<Api>[]
   diagnostics: readonly CatalogDiagnostic[]
+  /**
+   * 模型 id 到套餐额度的映射。
+   *
+   * 额度是纯展示信息，与模型可用性解耦：没有这个字段（旧快照或抓取失败）时
+   * 界面只少一列，模型目录照常工作，因此不参与 `isSnapshot` 的强校验。
+   */
+  limits?: LimitTable
 }
 
 /** 目录快照存储抽象。 */
@@ -47,6 +55,7 @@ export class JsonCatalogStore implements CatalogStore {
         version: 1,
         checkedAt: value.checkedAt,
         diagnostics: value.diagnostics,
+        ...(value.limits === undefined ? {} : { limits: value.limits }),
         models: value.models.map(model => {
           const policy = policyFor(model.id)
           return {

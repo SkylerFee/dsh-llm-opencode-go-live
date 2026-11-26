@@ -41,6 +41,8 @@ interface FetchCall {
 async function mountCard(
   envelope: unknown,
   overrideFetch?: () => Promise<Response>,
+  /** 卡片里展示的模型；默认只有一个 m1。 */
+  models: { id: string; name: string }[] = [{ id: 'm1', name: 'M1' }],
 ): Promise<{
   render: () => Element
   dictionary: Record<string, string>
@@ -143,7 +145,7 @@ async function mountCard(
       session: {
         modelCatalog: async () => ({
           ok: true,
-          value: { groups: [{ id: 'opencode-go-live', models: [{ id: 'm1', name: 'M1' }] }], failures: [] },
+          value: { groups: [{ id: 'opencode-go-live', models }], failures: [] },
         }),
       },
       credentials: {
@@ -189,7 +191,9 @@ test('模型提供商卡片提供刷新按钮，点击后以 POST 调用主动�
   await settle()
   await settle()
 
-  assert.deepEqual(calls, [{ url: '/api/opencode-go-live/refresh', method: 'POST' }])
+  // 卡片挂载时还会读一次套餐额度（GET /limits）；这里只关心主动刷新那一笔。
+  assert.deepEqual(calls.filter(call => call.url === '/api/opencode-go-live/refresh'),
+    [{ url: '/api/opencode-go-live/refresh', method: 'POST' }])
   tree = render()
   const expected = dictionary.refreshResult
     .replace('{a}', '2')
@@ -250,4 +254,40 @@ test('网络失败（旧宿主未注册该路由）时按失败处理', async ()
   tree = render()
   assert.ok(find(tree, node => node.type === 'div' && node.children[0] === dictionary.refreshFailed))
   assert.equal(buttonLabeled(tree, dictionary.refreshModels)?.props.disabled, false)
+})
+
+test('模型行并列显示三档额度，缺失档位与无额度模型显示横杠', async () => {
+  const { render, dictionary } = await mountCard({
+    ok: true, checkedAt: new Date().toISOString(),
+    plans: ['go', 'go-plus', 'go-teams'],
+    limits: {
+      // 三档都有：15 / 60 / 20
+      full: { go: 15, 'go-plus': 60, 'go-teams': 20 },
+      // 只给 Go：其余两档显示横杠
+      partial: { go: 30 },
+      // null 表示不计量（免费模型）
+      free: { go: null, 'go-plus': null, 'go-teams': null },
+    },
+  }, undefined, [{ id: 'full', name: 'Full' }, { id: 'partial', name: 'Partial' }, { id: 'free', name: 'Free' }])
+  let tree = render()
+  // 行内只渲染 name；本用例的三个模型 name 分别是 Full / Partial / Free。
+  const li = (name: string) => find(tree, node =>
+    node.type === 'li' && node.children?.includes(name))
+
+  const fullRow = li('Full')
+  assert.ok(fullRow, '应有 full 模型行')
+  const fullText = JSON.stringify(fullRow)
+  assert.ok(fullText.includes('$15'), `Go 档应显示 $15：${fullText}`)
+  assert.ok(fullText.includes('$60'), 'Plus 档应显示 $60')
+  assert.ok(fullText.includes('$20'), 'Teams 档应显示 $20')
+
+  // 只统计额度那一行的文本：模型名里的破折号不算。
+  const quotaText = (row) => find(row, node => node.type === 'div' && node.children.length === 1
+    && typeof node.children[0] === 'string' && node.children[0].includes('·'))?.children[0]
+  const partialText = quotaText(li('Partial'))
+  assert.ok(partialText.includes('$30'), `Go 档应显示 $30：${partialText}`)
+  assert.equal((partialText.match(/—/g) ?? []).length, 2, `缺失档位应显示两个横杠：${partialText}`)
+
+  const freeText = quotaText(li('Free'))
+  assert.equal((freeText.match(/∞/g) ?? []).length, 3, `免费模型三档都应显示 ∞：${freeText}`)
 })

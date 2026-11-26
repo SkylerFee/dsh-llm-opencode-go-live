@@ -33,6 +33,7 @@ The plugin registers only the `opencode-go-live` route. The built-in DSH `openco
 | `src/transform.ts` | Validate source models and produce pi-ai models plus rejection diagnostics. |
 | `src/store.ts` | Read and write the in-memory or JSON catalog snapshot. |
 | `src/diff.ts` | Compare the previous and next catalogs to report added, updated, and removed models. |
+| `src/limits.ts` | Read per-model plan allowances from the official inference listing and publish them with the snapshot for display. |
 | `src/provider.ts` | Reuse `PiAiAdapter` and the pi-ai OpenCode Go transport, passing the session id upstream. |
 | `src/index.ts` | Register the Cordis plugin, the model route, the refresh jobs, the manual refresh route, and credential resolution. |
 | `client.js` | The browser entry distributed by the plugin; it provides on-demand key editing, a manual catalog refresh with a transient result notice, and the model list in the Models slot. |
@@ -82,6 +83,12 @@ The Models.dev `opencode-go` catalog decides which models belong to the live rou
 Deprecated models, models without a valid context or output limit, without text input, or whose tool-calling capability cannot be established do not enter the catalog; rejected entries produce diagnostics. Known policies may supply limits or input types the source lacks, but an input range the source states explicitly is never widened. Model prices are zeroed in the snapshot and are not used for billing.
 
 Accepted models are additionally checked for protocol consistency: within one protocol the endpoints must agree, both among the models this refresh produced and with the pinned pi-ai policy table. Borrowed from how the OpenCode Console integration groups models by provider — one protocol per endpoint — the check reports a `POLICY_GROUP_MISMATCH` diagnostic instead of dropping models, because catalog membership belongs to the source: a policy table that lags behind must not make models disappear, but the divergence should be visible in diagnostics.
+
+## Plan allowances
+
+The model list shows each model's monthly allowance for all three official tiers (Go, Go Plus, Go Teams) side by side. The data comes from `go.monthly_usage` in `GET https://opencode.ai/inference/go/v1/models` — the same endpoint the official Limits table uses, and it needs no authentication. The figure is an equivalent allowance (how much API usage the model's monthly quota is worth), not an account balance, so the UI always renders it as `$n/mo` rather than a bare number.
+
+Allowances are a display-only enhancement, fully decoupled from model availability: if the fetch fails, a field is renamed, or the endpoint disappears, the refresh still publishes the catalog, the snapshot carries no `limits`, and the row shows a dash. `null` means the tier is unmetered (free models) and renders as `∞`; a missing tier also renders as a dash. Allowances update with the catalog refresh and never trigger a request of their own.
 
 ## Credentials and requests
 

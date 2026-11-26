@@ -8,6 +8,8 @@ import type { ResolvedConfig } from './config.js'
 import { createUsageSource } from './balance.js'
 import type { UsageEnvelope, UsageSource } from './balance.js'
 import { diffCatalogs } from './diff.js'
+import { createLimitsSource, LIMIT_PLANS } from './limits.js'
+import type { LimitTable, LimitsSource } from './limits.js'
 import { createDynamicAdapter, ROUTE_ID } from './provider.js'
 import { createModelsSource } from './source.js'
 import type { ModelsSource } from './source.js'
@@ -21,6 +23,8 @@ export { createUsageSource, OPENCODE_GO_USAGE_URL, parseUsageResponse } from './
 export type { UsageEnvelope, UsageErrorCode, UsageReport, UsageSource, UsageWindow } from './balance.js'
 export { diffCatalogs } from './diff.js'
 export type { CatalogDiff } from './diff.js'
+export { createLimitsSource, LIMIT_PLANS, OPENCODE_GO_LIMITS_URL, parseLimits } from './limits.js'
+export type { LimitsSource, LimitPlan, LimitTable, ModelLimit } from './limits.js'
 export { OPEN_CODE_GO_POLICIES, policyFor } from './policy.js'
 export type { OpenCodeGoApi, OpenCodeGoPolicy } from './policy.js'
 export { createModelsSource } from './source.js'
@@ -41,6 +45,8 @@ const MAX_STARTUP_RETRIES = 4
 export const BALANCE_ROUTE_PATH = '/api/opencode-go-live/balance'
 /** 浏览器可访问的主动刷新路由；client.js 以平行常量引用同一路径。 */
 export const REFRESH_ROUTE_PATH = '/api/opencode-go-live/refresh'
+/** 浏览器可访问的套餐额度路由；client.js 以平行常量引用同一路径。 */
+export const LIMITS_ROUTE_PATH = '/api/opencode-go-live/limits'
 const USAGE_TIMEOUT_MS = 10_000
 
 /**
@@ -67,6 +73,8 @@ interface ContextWithConnection extends Context {
 interface RuntimeOptions {
   config: ResolvedConfig
   source: ModelsSource
+  /** 额度来源；省略或解析失败时快照不带额度，界面少一列而模型照常可用。 */
+  limits?: LimitsSource
   store: CatalogStore
   logger: Pick<Context['logger'], 'info' | 'warn' | 'error'>
   onCatalogUpdated?: () => void
@@ -151,6 +159,30 @@ export class OpenCodeGoLiveRuntime {
   }
 
   /**
+   * 抓取套餐额度；任何失败都只记警告并返回 undefined。
+   *
+   * 额度是纯展示增强，不能影响模型目录：端点改版、字段消失或网络故障时，
+   * 刷新照常发布模型，只是界面上少一列。这也保证了「模型可用」不依赖一个
+   * 未文档化的第三方端点。
+   * @param signal - 与目录抓取共享的超时信号。
+   * @returns 模型 id 到额度的映射；失败或未配置来源时为 undefined。
+   */
+  private async fetchLimitsSafely(signal: AbortSignal): Promise<LimitTable | undefined> {
+    if (this.options.limits === undefined) return undefined
+    try {
+      const table = await this.options.limits.fetchLimits(signal)
+      return Object.keys(table).length === 0 ? undefined : table
+    } catch (error) {
+      if (!this.disposed) {
+        this.options.logger.warn(
+          `llm-opencode-go-live: plan limits unavailable; models stay usable without them (${String(error)})`,
+        )
+      }
+      return undefined
+    }
+  }
+
+  /**
    * 计算下一次失败重试的等待时间：从 `refreshRetryMinMs` 起按失败次数翻倍。
    *
    * 使用位运算之前先夹住指数，避免失败次数很大时 `2 ** n` 溢出成 Infinity
@@ -207,6 +239,8 @@ export class OpenCodeGoLiveRuntime {
     try {
       const source = await this.options.source.fetchProvider(controller.signal)
       if (this.disposed) return undefined
+      const limits = await this.fetchLimitsSafely(controller.signal)
+      if (this.disposed) return undefined
       const result = transformProvider(source)
       if (result.models.length === 0 && result.diagnostics.some(item => item.code !== 'DEPRECATED_MODEL')) {
         throw new Error('llm-opencode-go-live: source produced no valid models')
@@ -216,6 +250,7 @@ export class OpenCodeGoLiveRuntime {
         checkedAt: new Date().toISOString(),
         models: result.models,
         diagnostics: result.diagnostics,
+        ...(limits === undefined ? {} : { limits }),
       }
       await this.options.store.save(snapshot)
       if (this.disposed) return undefined
@@ -329,6 +364,26 @@ export async function refreshRoute(runtime: OpenCodeGoLiveRuntime): Promise<Resp
 }
 
 /**
+ * 套餐额度路由处理器。
+ *
+ * 额度是快照里的附带信息，因此这里只读当前快照、不触发任何网络访问：模型目录
+ * 刷新时顺带更新额度，界面按需读取。认证由 `/api` 桥在到达本处理器之前完成，
+ * 与余额路由一致。
+ * @param runtime - 目录运行时。
+ * @returns JSON 响应：`{ ok: true, checkedAt, plans, limits }`。
+ */
+async function limitsRoute(runtime: OpenCodeGoLiveRuntime): Promise<Response> {
+  const snapshot = runtime.getSnapshot()
+  return new Response(JSON.stringify({
+    ok: true,
+    checkedAt: snapshot?.checkedAt ?? null,
+    // 档位顺序由服务端确定，避免客户端各自排序导致三档错位。
+    plans: [...LIMIT_PLANS],
+    limits: snapshot?.limits ?? {},
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+/**
  * Cordis 插件入口。插件直接注册 Harness 原生 LLM 适配器。
  * @param ctx - Cordis 上下文。
  * @param config - 插件配置。
@@ -343,6 +398,7 @@ export function apply(
   const runtime = new OpenCodeGoLiveRuntime({
     config: resolvedConfig,
     source: createModelsSource(),
+    limits: createLimitsSource(),
     store: resolvedConfig.catalog.cachePath === undefined
       ? new MemoryCatalogStore()
       : new JsonCatalogStore(resolvedConfig.catalog.cachePath),
@@ -382,6 +438,12 @@ export function apply(
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: () => refreshRoute(runtime),
+    }))
+    child.effect(() => connection.fetch.register({
+      path: LIMITS_ROUTE_PATH,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: () => limitsRoute(runtime),
     }))
   })
   void runtime.start().catch(error => {
